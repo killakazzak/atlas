@@ -145,3 +145,82 @@ func TestRequireAuth_ExpiredToken(t *testing.T) {
 		t.Fatalf("expected 401 for expired token, got %d", w.Code)
 	}
 }
+
+// --- RequireRole / RequireRoles ---
+
+// claimsCtx returns a request whose context already carries the given claims,
+// simulating a request that has passed through RequireAuth.
+func claimsCtx(r *http.Request, role Role) *http.Request {
+	c := &Claims{UserID: "u-1", Login: "alice", Role: role}
+	return r.WithContext(WithClaims(r.Context(), c))
+}
+
+func ok200(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }
+
+func TestRequireRole_AllowedRole(t *testing.T) {
+	t.Parallel()
+
+	h := RequireRole(RoleAdministrator, noRequestID)(http.HandlerFunc(ok200))
+	r := claimsCtx(httptest.NewRequest(http.MethodGet, "/", nil), RoleAdministrator)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+}
+
+func TestRequireRole_ForbiddenRole(t *testing.T) {
+	t.Parallel()
+
+	h := RequireRole(RoleAdministrator, noRequestID)(http.HandlerFunc(ok200))
+	r := claimsCtx(httptest.NewRequest(http.MethodGet, "/", nil), RoleViewer)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d", w.Code)
+	}
+}
+
+func TestRequireRoles_OneOfAllowed(t *testing.T) {
+	t.Parallel()
+
+	h := RequireRoles(noRequestID, RoleAdministrator, RoleOperator)(http.HandlerFunc(ok200))
+
+	for _, role := range []Role{RoleAdministrator, RoleOperator} {
+		r := claimsCtx(httptest.NewRequest(http.MethodGet, "/", nil), role)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if w.Code != http.StatusOK {
+			t.Errorf("role %q: expected 200, got %d", role, w.Code)
+		}
+	}
+}
+
+func TestRequireRoles_ViewerForbidden(t *testing.T) {
+	t.Parallel()
+
+	h := RequireRoles(noRequestID, RoleAdministrator, RoleOperator)(http.HandlerFunc(ok200))
+	r := claimsCtx(httptest.NewRequest(http.MethodGet, "/", nil), RoleViewer)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d", w.Code)
+	}
+}
+
+func TestRequireRole_NoClaims_Returns401(t *testing.T) {
+	t.Parallel()
+
+	// RequireAuth was skipped — no claims in context.
+	h := RequireRole(RoleAdministrator, noRequestID)(http.HandlerFunc(ok200))
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 when claims missing, got %d", w.Code)
+	}
+}
