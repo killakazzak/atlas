@@ -8,7 +8,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
+	"atlas/internal/auth"
 	"atlas/internal/inventory"
 	inventoryhttp "atlas/internal/inventory/http"
 )
@@ -17,13 +19,34 @@ func nopLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
-func newTestMux(t *testing.T) *http.ServeMux {
+// testTokenSvc returns a JWT service and a pre-signed token for the given role.
+func testTokenSvc(t *testing.T, role auth.Role) (auth.TokenService, string) {
 	t.Helper()
+	svc := auth.NewJWTService(auth.JWTConfig{
+		Secret: []byte("test-secret"),
+		Issuer: "test",
+		TTL:    time.Hour,
+	})
+	tok, err := svc.Generate(&auth.User{ID: "u-1", Username: "alice", Role: role})
+	if err != nil {
+		t.Fatalf("generate token: %v", err)
+	}
+	return svc, tok
+}
+
+func newTestMux(t *testing.T, role auth.Role) (*http.ServeMux, string) {
+	t.Helper()
+	tokenSvc, tok := testTokenSvc(t, role)
 	repo := inventory.NewMemoryServerRepository()
 	svc := inventory.NewService(repo)
 	mux := http.NewServeMux()
-	inventoryhttp.NewHandler(svc, nopLogger()).Register(mux)
-	return mux
+	inventoryhttp.NewHandler(svc, tokenSvc, nopLogger()).Register(mux)
+	return mux, tok
+}
+
+func bearer(r *http.Request, tok string) *http.Request {
+	r.Header.Set("Authorization", "Bearer "+tok)
+	return r
 }
 
 func errorCode(t *testing.T, body []byte) string {
@@ -41,11 +64,11 @@ func errorCode(t *testing.T, body []byte) string {
 
 func TestHandler_ServersAPI(t *testing.T) {
 	t.Parallel()
-	mux := newTestMux(t)
+	mux, adminTok := newTestMux(t, auth.RoleAdministrator)
 
 	// Empty list
 	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/servers", nil))
+	mux.ServeHTTP(rec, bearer(httptest.NewRequest(http.MethodGet, "/api/v1/servers", nil), adminTok))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("list status = %d, want %d", rec.Code, http.StatusOK)
 	}
@@ -59,11 +82,10 @@ func TestHandler_ServersAPI(t *testing.T) {
 
 	// Invalid create — missing name
 	rec = httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest(
-		http.MethodPost,
-		"/api/v1/servers",
+	mux.ServeHTTP(rec, bearer(httptest.NewRequest(
+		http.MethodPost, "/api/v1/servers",
 		bytes.NewBufferString(`{"name":""}`),
-	))
+	), adminTok))
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("create invalid status = %d, want %d", rec.Code, http.StatusBadRequest)
 	}
@@ -73,11 +95,10 @@ func TestHandler_ServersAPI(t *testing.T) {
 
 	// Create
 	rec = httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest(
-		http.MethodPost,
-		"/api/v1/servers",
+	mux.ServeHTTP(rec, bearer(httptest.NewRequest(
+		http.MethodPost, "/api/v1/servers",
 		bytes.NewBufferString(`{"name":"srv-1","hostname":"srv-1.local","ip":"10.0.0.1"}`),
-	))
+	), adminTok))
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("create status = %d, want %d body=%s", rec.Code, http.StatusCreated, rec.Body.String())
 	}
@@ -92,14 +113,14 @@ func TestHandler_ServersAPI(t *testing.T) {
 
 	// Get
 	rec = httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/servers/"+id, nil))
+	mux.ServeHTTP(rec, bearer(httptest.NewRequest(http.MethodGet, "/api/v1/servers/"+id, nil), adminTok))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("get status = %d, want %d", rec.Code, http.StatusOK)
 	}
 
 	// Get missing → 404 not_found
 	rec = httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/servers/missing", nil))
+	mux.ServeHTTP(rec, bearer(httptest.NewRequest(http.MethodGet, "/api/v1/servers/missing", nil), adminTok))
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("get missing status = %d, want %d", rec.Code, http.StatusNotFound)
 	}
@@ -109,11 +130,10 @@ func TestHandler_ServersAPI(t *testing.T) {
 
 	// Update
 	rec = httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest(
-		http.MethodPut,
-		"/api/v1/servers/"+id,
+	mux.ServeHTTP(rec, bearer(httptest.NewRequest(
+		http.MethodPut, "/api/v1/servers/"+id,
 		bytes.NewBufferString(`{"name":"srv-1-renamed","hostname":"srv-1.local","ip":"10.0.0.2","status":"online"}`),
-	))
+	), adminTok))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("update status = %d, want %d body=%s", rec.Code, http.StatusOK, rec.Body.String())
 	}
@@ -130,11 +150,10 @@ func TestHandler_ServersAPI(t *testing.T) {
 
 	// Update missing → 404 not_found
 	rec = httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest(
-		http.MethodPut,
-		"/api/v1/servers/missing",
+	mux.ServeHTTP(rec, bearer(httptest.NewRequest(
+		http.MethodPut, "/api/v1/servers/missing",
 		bytes.NewBufferString(`{"name":"x","hostname":"x.local"}`),
-	))
+	), adminTok))
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("update missing status = %d, want %d", rec.Code, http.StatusNotFound)
 	}
@@ -144,18 +163,68 @@ func TestHandler_ServersAPI(t *testing.T) {
 
 	// Delete
 	rec = httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/v1/servers/"+id, nil))
+	mux.ServeHTTP(rec, bearer(httptest.NewRequest(http.MethodDelete, "/api/v1/servers/"+id, nil), adminTok))
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("delete status = %d, want %d", rec.Code, http.StatusNoContent)
 	}
 
 	// Delete missing → 404 not_found
 	rec = httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/v1/servers/"+id, nil))
+	mux.ServeHTTP(rec, bearer(httptest.NewRequest(http.MethodDelete, "/api/v1/servers/"+id, nil), adminTok))
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("delete missing status = %d, want %d", rec.Code, http.StatusNotFound)
 	}
 	if code := errorCode(t, rec.Body.Bytes()); code != "not_found" {
 		t.Fatalf("expected not_found, got %q", code)
+	}
+}
+
+func TestHandler_RoleEnforcement(t *testing.T) {
+	t.Parallel()
+
+	// Viewer can read but not write or delete.
+	mux, viewerTok := newTestMux(t, auth.RoleViewer)
+
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, bearer(httptest.NewRequest(http.MethodGet, "/api/v1/servers", nil), viewerTok))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("viewer list: expected 200, got %d", rec.Code)
+	}
+
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, bearer(httptest.NewRequest(
+		http.MethodPost, "/api/v1/servers",
+		bytes.NewBufferString(`{"name":"x","hostname":"x.local"}`),
+	), viewerTok))
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("viewer create: expected 403, got %d", rec.Code)
+	}
+
+	// Operator can write but not delete.
+	mux, operatorTok := newTestMux(t, auth.RoleOperator)
+
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, bearer(httptest.NewRequest(
+		http.MethodPost, "/api/v1/servers",
+		bytes.NewBufferString(`{"name":"srv","hostname":"srv.local"}`),
+	), operatorTok))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("operator create: expected 201, got %d: %s", rec.Code, rec.Body)
+	}
+	var created map[string]any
+	_ = json.Unmarshal(rec.Body.Bytes(), &created)
+	id := created["id"].(string)
+
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, bearer(httptest.NewRequest(http.MethodDelete, "/api/v1/servers/"+id, nil), operatorTok))
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("operator delete: expected 403, got %d", rec.Code)
+	}
+
+	// No token → 401.
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/servers", nil))
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("no token: expected 401, got %d", rec.Code)
 	}
 }

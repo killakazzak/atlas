@@ -55,7 +55,7 @@ func New(cfg config.Config, logger *slog.Logger, inventoryService inventory.Serv
 func (s *Server) routes(inventoryService inventory.Service, authService auth.Service, tokenService auth.TokenService) {
 	s.mux.HandleFunc("GET /health", s.handleHealth)
 	s.mux.HandleFunc("GET /version", s.handleVersion)
-	inventoryhttp.NewHandler(inventoryService, s.logger).Register(s.mux)
+	inventoryhttp.NewHandler(inventoryService, tokenService, s.logger).Register(s.mux)
 	authhttp.NewHandler(authService, tokenService, s.cfg.JWTAccessTokenTTL, s.logger).Register(s.mux)
 	atlasdocs.Register(s.mux)
 }

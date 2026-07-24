@@ -13,6 +13,8 @@ info:
 tags:
   - name: system
     description: Service health and version.
+  - name: auth
+    description: Authentication and identity.
   - name: inventory
     description: Inventory management.
 
@@ -48,12 +50,70 @@ paths:
               schema:
                 $ref: "#/components/schemas/VersionResponse"
 
+  /api/v1/auth/login:
+    post:
+      summary: Log in
+      description: Authenticates a user and returns a signed JWT access token.
+      operationId: login
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Authentication successful.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/auth/logout:
+    post:
+      summary: Log out
+      description: |
+        Stateless logout stub. The client is expected to discard the token locally.
+        Token revocation (blocklist) is not yet implemented.
+      operationId: logout
+      tags: [auth]
+      responses:
+        "204":
+          description: Logged out.
+
+  /api/v1/auth/me:
+    get:
+      summary: Current user
+      description: Returns the profile of the currently authenticated user.
+      operationId: getMe
+      tags: [auth]
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Authenticated user profile.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
   /api/v1/servers:
     get:
       summary: List servers
-      description: Returns all servers registered in the inventory.
+      description: Returns all servers registered in the inventory. Requires Viewer role or above.
       operationId: listServers
       tags: [inventory]
+      security:
+        - BearerAuth: []
       responses:
         "200":
           description: List of all servers.
@@ -63,14 +123,20 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Server"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "500":
           $ref: "#/components/responses/InternalError"
 
     post:
       summary: Register a server
-      description: Registers a new managed server in the inventory.
+      description: Registers a new managed server in the inventory. Requires Operator role or above.
       operationId: createServer
       tags: [inventory]
+      security:
+        - BearerAuth: []
       requestBody:
         required: true
         content:
@@ -86,6 +152,10 @@ paths:
                 $ref: "#/components/schemas/Server"
         "400":
           $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "500":
           $ref: "#/components/responses/InternalError"
 
@@ -100,9 +170,11 @@ paths:
 
     get:
       summary: Get a server
-      description: Returns a single server by its identifier.
+      description: Returns a single server by its identifier. Requires Viewer role or above.
       operationId: getServer
       tags: [inventory]
+      security:
+        - BearerAuth: []
       responses:
         "200":
           description: Server found.
@@ -110,6 +182,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Server"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "500":
@@ -117,21 +193,47 @@ paths:
 
     delete:
       summary: Delete a server
-      description: Removes a server from the inventory permanently.
+      description: Removes a server from the inventory permanently. Requires Administrator role.
       operationId: deleteServer
       tags: [inventory]
+      security:
+        - BearerAuth: []
       responses:
         "204":
           description: Server deleted.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalError"
 
 components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
   responses:
     BadRequest:
       description: Invalid request.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+    Unauthorized:
+      description: Missing or invalid authentication token.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+    Forbidden:
+      description: Authenticated but insufficient role.
       content:
         application/json:
           schema:
@@ -170,6 +272,57 @@ components:
         version:
           type: string
           example: 0.1.0
+
+    LoginRequest:
+      type: object
+      required: [login, password]
+      properties:
+        login:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: admin
+        password:
+          type: string
+          minLength: 1
+          example: "s3cr3t"
+
+    LoginResponse:
+      type: object
+      required: [accessToken, expiresIn, tokenType]
+      properties:
+        accessToken:
+          type: string
+          description: Signed JWT access token.
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        expiresIn:
+          type: integer
+          description: Token lifetime in seconds.
+          example: 3600
+        tokenType:
+          type: string
+          enum: [Bearer]
+          example: Bearer
+
+    UserProfile:
+      type: object
+      required: [id, login, email, role]
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        login:
+          type: string
+          example: alice
+        email:
+          type: string
+          format: email
+          example: alice@example.com
+        role:
+          type: string
+          enum: [administrator, operator, viewer]
+          example: operator
 
     Server:
       type: object

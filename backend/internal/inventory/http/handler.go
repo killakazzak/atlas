@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"atlas/internal/auth"
 	"atlas/internal/http/middleware"
 	"atlas/internal/httpx"
 	"atlas/internal/inventory"
@@ -17,21 +18,35 @@ import (
 // Handler serves inventory HTTP endpoints using the Inventory Service.
 type Handler struct {
 	service inventory.Service
+	tokens  auth.TokenService
 	logger  *slog.Logger
 }
 
 // NewHandler constructs an inventory HTTP Handler.
-func NewHandler(service inventory.Service, logger *slog.Logger) *Handler {
-	return &Handler{service: service, logger: logger}
+func NewHandler(service inventory.Service, tokens auth.TokenService, logger *slog.Logger) *Handler {
+	return &Handler{service: service, tokens: tokens, logger: logger}
 }
 
-// Register mounts inventory routes on mux.
+// Register mounts inventory routes on mux with role-based access control.
+//
+//	GET    /api/v1/servers       — Viewer+
+//	GET    /api/v1/servers/{id}  — Viewer+
+//	POST   /api/v1/servers       — Operator+
+//	PUT    /api/v1/servers/{id}  — Operator+
+//	DELETE /api/v1/servers/{id}  — Administrator only
 func (h *Handler) Register(mux *nethttp.ServeMux) {
-	mux.HandleFunc("GET /api/v1/servers", h.listServers)
-	mux.HandleFunc("GET /api/v1/servers/{id}", h.getServer)
-	mux.HandleFunc("POST /api/v1/servers", h.createServer)
-	mux.HandleFunc("PUT /api/v1/servers/{id}", h.updateServer)
-	mux.HandleFunc("DELETE /api/v1/servers/{id}", h.deleteServer)
+	requireAuth := auth.RequireAuth(h.tokens, middleware.RequestIDFromContext)
+	viewerPlus := auth.RequireRoles(middleware.RequestIDFromContext,
+		auth.RoleAdministrator, auth.RoleOperator, auth.RoleViewer)
+	operatorPlus := auth.RequireRoles(middleware.RequestIDFromContext,
+		auth.RoleAdministrator, auth.RoleOperator)
+	adminOnly := auth.RequireRole(auth.RoleAdministrator, middleware.RequestIDFromContext)
+
+	mux.Handle("GET /api/v1/servers", requireAuth(viewerPlus(nethttp.HandlerFunc(h.listServers))))
+	mux.Handle("GET /api/v1/servers/{id}", requireAuth(viewerPlus(nethttp.HandlerFunc(h.getServer))))
+	mux.Handle("POST /api/v1/servers", requireAuth(operatorPlus(nethttp.HandlerFunc(h.createServer))))
+	mux.Handle("PUT /api/v1/servers/{id}", requireAuth(operatorPlus(nethttp.HandlerFunc(h.updateServer))))
+	mux.Handle("DELETE /api/v1/servers/{id}", requireAuth(adminOnly(nethttp.HandlerFunc(h.deleteServer))))
 }
 
 type serverResponse struct {

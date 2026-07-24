@@ -50,13 +50,16 @@ func TestHealth_RequestID(t *testing.T) {
 }
 
 func TestServers_RequestID(t *testing.T) {
-	h := newTestServer(t)
-	w := httptest.NewRecorder()
+	h, svc := newTestServerWithAuth(t)
+	tok := createUserAndLogin(t, svc, h)
+
 	r := httptest.NewRequest(http.MethodGet, "/api/v1/servers", nil)
+	r.Header.Set("Authorization", "Bearer "+tok)
+	w := httptest.NewRecorder()
 	h.ServeHTTP(w, r)
 
 	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", w.Code)
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body)
 	}
 	if w.Header().Get("X-Request-ID") == "" {
 		t.Fatal("expected X-Request-ID header on /api/v1/servers")
@@ -114,9 +117,12 @@ func TestSwaggerUI_Returns200(t *testing.T) {
 }
 
 func TestServers_EmptyList(t *testing.T) {
-	h := newTestServer(t)
-	w := httptest.NewRecorder()
+	h, svc := newTestServerWithAuth(t)
+	tok := createUserAndLogin(t, svc, h)
+
 	r := httptest.NewRequest(http.MethodGet, "/api/v1/servers", nil)
+	r.Header.Set("Authorization", "Bearer "+tok)
+	w := httptest.NewRecorder()
 	h.ServeHTTP(w, r)
 
 	var body []any
@@ -125,6 +131,45 @@ func TestServers_EmptyList(t *testing.T) {
 	}
 	if len(body) != 0 {
 		t.Fatalf("expected empty list, got %v", body)
+	}
+}
+
+func TestServers_NoToken_Returns401(t *testing.T) {
+	h := newTestServer(t)
+	r := httptest.NewRequest(http.MethodGet, "/api/v1/servers", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", w.Code)
+	}
+}
+
+func TestServers_ViewerCannotDelete(t *testing.T) {
+	h, svc := newTestServerWithAuth(t)
+	tok := createUserAndLogin(t, svc, h) // alice is RoleOperator
+
+	// Create a server as operator first.
+	body, _ := json.Marshal(map[string]string{"name": "srv", "hostname": "srv.local"})
+	rCreate := httptest.NewRequest(http.MethodPost, "/api/v1/servers", bytes.NewReader(body))
+	rCreate.Header.Set("Content-Type", "application/json")
+	rCreate.Header.Set("Authorization", "Bearer "+tok)
+	wCreate := httptest.NewRecorder()
+	h.ServeHTTP(wCreate, rCreate)
+	if wCreate.Code != http.StatusCreated {
+		t.Fatalf("create server: expected 201, got %d: %s", wCreate.Code, wCreate.Body)
+	}
+
+	var created map[string]any
+	_ = json.Unmarshal(wCreate.Body.Bytes(), &created)
+	id := created["id"].(string)
+
+	// Operator tries to delete — should get 403.
+	rDel := httptest.NewRequest(http.MethodDelete, "/api/v1/servers/"+id, nil)
+	rDel.Header.Set("Authorization", "Bearer "+tok)
+	wDel := httptest.NewRecorder()
+	h.ServeHTTP(wDel, rDel)
+	if wDel.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for operator delete, got %d", wDel.Code)
 	}
 }
 
