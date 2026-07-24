@@ -31,11 +31,8 @@ func (s *service) RegisterServer(ctx context.Context, server *Server) error {
 	if server == nil {
 		return fmt.Errorf("%w: server is nil", ErrInvalidServer)
 	}
-	if server.Name == "" {
-		return fmt.Errorf("%w: name is required", ErrInvalidServer)
-	}
-	if server.Hostname == "" {
-		return fmt.Errorf("%w: hostname is required", ErrInvalidServer)
+	if err := validateServer(server); err != nil {
+		return err
 	}
 	if err := s.servers.Create(ctx, server); err != nil {
 		return fmt.Errorf("register server: %w", err)
@@ -60,8 +57,27 @@ func (s *service) ListServers(ctx context.Context) ([]Server, error) {
 }
 
 func (s *service) UpdateServer(ctx context.Context, server *Server) error {
+	if err := validateServer(server); err != nil {
+		return err
+	}
 	if err := s.servers.Update(ctx, server); err != nil {
 		return fmt.Errorf("update server: %w", err)
+	}
+	return nil
+}
+
+func validateServer(server *Server) error {
+	if server.Name == "" {
+		return fmt.Errorf("%w: name is required", ErrInvalidServer)
+	}
+	if len(server.Name) > 255 {
+		return fmt.Errorf("%w: name must not exceed 255 characters", ErrInvalidServer)
+	}
+	if server.Hostname == "" {
+		return fmt.Errorf("%w: hostname is required", ErrInvalidServer)
+	}
+	if len(server.Hostname) > 255 {
+		return fmt.Errorf("%w: hostname must not exceed 255 characters", ErrInvalidServer)
 	}
 	return nil
 }
