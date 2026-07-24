@@ -11,6 +11,7 @@ import (
 	stdhttp "net/http"
 
 	"atlas/internal/config"
+	atlashttp "atlas/internal/http/middleware"
 	"atlas/internal/inventory"
 	inventoryhttp "atlas/internal/inventory/http"
 	"atlas/internal/version"
@@ -37,6 +38,14 @@ func New(cfg config.Config, logger *slog.Logger, inventoryService inventory.Serv
 		},
 	}
 	s.routes(inventoryService)
+
+	chain := atlashttp.Chain(
+		atlashttp.Recovery(logger),
+		atlashttp.RequestID,
+		atlashttp.Logging(logger),
+	)
+	s.http.Handler = chain(mux)
+
 	return s
 }
 
@@ -44,6 +53,11 @@ func (s *Server) routes(inventoryService inventory.Service) {
 	s.mux.HandleFunc("GET /health", s.handleHealth)
 	s.mux.HandleFunc("GET /version", s.handleVersion)
 	inventoryhttp.NewHandler(inventoryService).Register(s.mux)
+}
+
+// Handler returns the server's root http.Handler. Useful for testing.
+func (s *Server) Handler() stdhttp.Handler {
+	return s.http.Handler
 }
 
 // Run starts the HTTP listener and blocks until it fails or Shutdown is called.
