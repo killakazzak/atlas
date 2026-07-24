@@ -48,7 +48,7 @@ func New(cfg config.Config) (*App, error) {
 	userRepo := newUserRepository(cfg, pool, log)
 
 	inventoryService := inventory.NewService(serverRepo)
-	authService := auth.NewService(userRepo)
+	authService := auth.NewService(userRepo, auth.BcryptHasher{})
 	httpServer := atlashttp.New(cfg, log, inventoryService)
 
 	return &App{

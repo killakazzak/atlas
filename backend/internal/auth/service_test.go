@@ -3,17 +3,30 @@ package auth
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 )
 
+// fakeHasher is a PasswordHasher stub that prepends "hashed:" to make
+// hashing deterministic and cheap in tests.
+type fakeHasher struct{}
+
+func (fakeHasher) Hash(password string) (string, error) { return "hashed:" + password, nil }
+func (fakeHasher) Compare(hash, password string) error {
+	if hash != "hashed:"+password {
+		return ErrInvalidCredentials
+	}
+	return nil
+}
+
 type fakeUserRepository struct {
-	users         map[string]*User
-	byUsername    map[string]*User
-	getByIDErr    error
+	users            map[string]*User
+	byUsername       map[string]*User
+	getByIDErr       error
 	getByUsernameErr error
-	createErr     error
-	updateErr     error
-	deleteErr     error
+	createErr        error
+	updateErr        error
+	deleteErr        error
 }
 
 func newFakeRepo() *fakeUserRepository {
@@ -94,54 +107,34 @@ func (f *fakeUserRepository) Delete(_ context.Context, id string) error {
 	return nil
 }
 
-func validUser() *User {
-	return &User{
-		Username: "alice",
-		Email:    "alice@example.com",
-		Role:     RoleOperator,
-	}
+func newSvc() (Service, *fakeUserRepository) {
+	repo := newFakeRepo()
+	return NewService(repo, fakeHasher{}), repo
 }
 
 func TestService_CreateUser(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name    string
-		user    *User
-		wantErr error
+		name     string
+		login    string
+		email    string
+		password string
+		role     Role
+		wantErr  error
 	}{
-		{
-			name:    "nil user",
-			user:    nil,
-			wantErr: ErrInvalidUser,
-		},
-		{
-			name:    "missing username",
-			user:    &User{Email: "a@b.com", Role: RoleViewer},
-			wantErr: ErrInvalidUser,
-		},
-		{
-			name:    "missing email",
-			user:    &User{Username: "bob", Role: RoleViewer},
-			wantErr: ErrInvalidUser,
-		},
-		{
-			name:    "missing role",
-			user:    &User{Username: "bob", Email: "bob@example.com"},
-			wantErr: ErrInvalidUser,
-		},
-		{
-			name:    "valid user",
-			user:    validUser(),
-			wantErr: nil,
-		},
+		{name: "missing login", login: "", email: "a@b.com", password: "pw", role: RoleViewer, wantErr: ErrInvalidUser},
+		{name: "missing email", login: "bob", email: "", password: "pw", role: RoleViewer, wantErr: ErrInvalidUser},
+		{name: "missing role", login: "bob", email: "b@b.com", password: "pw", role: "", wantErr: ErrInvalidUser},
+		{name: "missing password", login: "bob", email: "b@b.com", password: "", role: RoleViewer, wantErr: ErrInvalidUser},
+		{name: "valid", login: "alice", email: "alice@example.com", password: "s3cr3t", role: RoleOperator, wantErr: nil},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			svc := NewService(newFakeRepo())
-			err := svc.CreateUser(context.Background(), tt.user)
+			svc, _ := newSvc()
+			_, err := svc.CreateUser(context.Background(), tt.login, tt.email, tt.password, tt.role)
 			if tt.wantErr == nil {
 				if err != nil {
 					t.Fatalf("CreateUser() error = %v, want nil", err)
@@ -153,19 +146,33 @@ func TestService_CreateUser(t *testing.T) {
 	}
 }
 
+func TestService_CreateUser_HashesPassword(t *testing.T) {
+	t.Parallel()
+
+	svc, repo := newSvc()
+	u, err := svc.CreateUser(context.Background(), "alice", "alice@example.com", "s3cr3t", RoleOperator)
+	if err != nil {
+		t.Fatalf("CreateUser() error = %v", err)
+	}
+
+	stored := repo.users[u.ID]
+	if stored.PasswordHash == "s3cr3t" {
+		t.Fatal("PasswordHash must not equal plaintext password")
+	}
+	if !strings.HasPrefix(stored.PasswordHash, "hashed:") {
+		t.Fatalf("unexpected PasswordHash %q", stored.PasswordHash)
+	}
+}
+
 func TestService_CreateUser_UsernameConflict(t *testing.T) {
 	t.Parallel()
 
-	repo := newFakeRepo()
-	svc := NewService(repo)
-
-	u := validUser()
-	if err := svc.CreateUser(context.Background(), u); err != nil {
+	svc, _ := newSvc()
+	if _, err := svc.CreateUser(context.Background(), "alice", "alice@example.com", "pw", RoleViewer); err != nil {
 		t.Fatalf("first CreateUser() error = %v", err)
 	}
 
-	duplicate := &User{Username: "alice", Email: "other@example.com", Role: RoleViewer}
-	err := svc.CreateUser(context.Background(), duplicate)
+	_, err := svc.CreateUser(context.Background(), "alice", "other@example.com", "pw", RoleViewer)
 	if !errors.Is(err, ErrUsernameConflict) {
 		t.Fatalf("expected ErrUsernameConflict, got %v", err)
 	}
@@ -174,11 +181,9 @@ func TestService_CreateUser_UsernameConflict(t *testing.T) {
 func TestService_GetUser(t *testing.T) {
 	t.Parallel()
 
-	repo := newFakeRepo()
-	svc := NewService(repo)
-
-	u := validUser()
-	if err := svc.CreateUser(context.Background(), u); err != nil {
+	svc, _ := newSvc()
+	u, err := svc.CreateUser(context.Background(), "alice", "alice@example.com", "pw", RoleOperator)
+	if err != nil {
 		t.Fatalf("CreateUser() error = %v", err)
 	}
 
@@ -186,15 +191,15 @@ func TestService_GetUser(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetUser() error = %v", err)
 	}
-	if got.Username != u.Username {
-		t.Fatalf("got username %q, want %q", got.Username, u.Username)
+	if got.Username != "alice" {
+		t.Fatalf("got username %q, want %q", got.Username, "alice")
 	}
 }
 
 func TestService_GetUser_NotFound(t *testing.T) {
 	t.Parallel()
 
-	svc := NewService(newFakeRepo())
+	svc, _ := newSvc()
 	_, err := svc.GetUser(context.Background(), "missing")
 	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
@@ -204,8 +209,7 @@ func TestService_GetUser_NotFound(t *testing.T) {
 func TestService_ListUsers(t *testing.T) {
 	t.Parallel()
 
-	repo := newFakeRepo()
-	svc := NewService(repo)
+	svc, _ := newSvc()
 
 	users, err := svc.ListUsers(context.Background())
 	if err != nil {
@@ -215,7 +219,7 @@ func TestService_ListUsers(t *testing.T) {
 		t.Fatalf("expected empty list, got %d", len(users))
 	}
 
-	if err := svc.CreateUser(context.Background(), validUser()); err != nil {
+	if _, err := svc.CreateUser(context.Background(), "alice", "alice@example.com", "pw", RoleOperator); err != nil {
 		t.Fatalf("CreateUser() error = %v", err)
 	}
 
@@ -231,11 +235,9 @@ func TestService_ListUsers(t *testing.T) {
 func TestService_UpdateUser(t *testing.T) {
 	t.Parallel()
 
-	repo := newFakeRepo()
-	svc := NewService(repo)
-
-	u := validUser()
-	if err := svc.CreateUser(context.Background(), u); err != nil {
+	svc, _ := newSvc()
+	u, err := svc.CreateUser(context.Background(), "alice", "alice@example.com", "pw", RoleOperator)
+	if err != nil {
 		t.Fatalf("CreateUser() error = %v", err)
 	}
 
@@ -256,11 +258,9 @@ func TestService_UpdateUser(t *testing.T) {
 func TestService_DeleteUser(t *testing.T) {
 	t.Parallel()
 
-	repo := newFakeRepo()
-	svc := NewService(repo)
-
-	u := validUser()
-	if err := svc.CreateUser(context.Background(), u); err != nil {
+	svc, _ := newSvc()
+	u, err := svc.CreateUser(context.Background(), "alice", "alice@example.com", "pw", RoleOperator)
+	if err != nil {
 		t.Fatalf("CreateUser() error = %v", err)
 	}
 
@@ -268,8 +268,49 @@ func TestService_DeleteUser(t *testing.T) {
 		t.Fatalf("DeleteUser() error = %v", err)
 	}
 
-	_, err := svc.GetUser(context.Background(), u.ID)
+	_, err = svc.GetUser(context.Background(), u.ID)
 	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("expected ErrNotFound after delete, got %v", err)
+	}
+}
+
+func TestService_Authenticate_Success(t *testing.T) {
+	t.Parallel()
+
+	svc, _ := newSvc()
+	if _, err := svc.CreateUser(context.Background(), "alice", "alice@example.com", "s3cr3t", RoleOperator); err != nil {
+		t.Fatalf("CreateUser() error = %v", err)
+	}
+
+	got, err := svc.Authenticate(context.Background(), "alice", "s3cr3t")
+	if err != nil {
+		t.Fatalf("Authenticate() error = %v", err)
+	}
+	if got.Username != "alice" {
+		t.Fatalf("got username %q, want %q", got.Username, "alice")
+	}
+}
+
+func TestService_Authenticate_WrongPassword(t *testing.T) {
+	t.Parallel()
+
+	svc, _ := newSvc()
+	if _, err := svc.CreateUser(context.Background(), "alice", "alice@example.com", "s3cr3t", RoleOperator); err != nil {
+		t.Fatalf("CreateUser() error = %v", err)
+	}
+
+	_, err := svc.Authenticate(context.Background(), "alice", "wrong")
+	if !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("expected ErrInvalidCredentials, got %v", err)
+	}
+}
+
+func TestService_Authenticate_UnknownLogin(t *testing.T) {
+	t.Parallel()
+
+	svc, _ := newSvc()
+	_, err := svc.Authenticate(context.Background(), "ghost", "pw")
+	if !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("expected ErrInvalidCredentials, got %v", err)
 	}
 }
