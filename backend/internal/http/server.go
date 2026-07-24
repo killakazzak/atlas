@@ -4,7 +4,9 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	stdhttp "net/http"
 
@@ -17,14 +19,20 @@ type Server struct {
 	cfg    config.Config
 	logger *slog.Logger
 	mux    *stdhttp.ServeMux
+	http   *stdhttp.Server
 }
 
 // New constructs a Server with registered routes.
 func New(cfg config.Config, logger *slog.Logger) *Server {
+	mux := stdhttp.NewServeMux()
 	s := &Server{
 		cfg:    cfg,
 		logger: logger,
-		mux:    stdhttp.NewServeMux(),
+		mux:    mux,
+		http: &stdhttp.Server{
+			Addr:    cfg.Addr(),
+			Handler: mux,
+		},
 	}
 	s.routes()
 	return s
@@ -35,11 +43,19 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /version", s.handleVersion)
 }
 
-// Run starts the HTTP listener and blocks until it fails.
+// Run starts the HTTP listener and blocks until it fails or Shutdown is called.
 func (s *Server) Run() error {
-	addr := s.cfg.Addr()
-	s.logger.Info("starting HTTP server", "addr", addr)
-	return stdhttp.ListenAndServe(addr, s.mux)
+	s.logger.Info("starting HTTP server", "addr", s.http.Addr)
+	err := s.http.ListenAndServe()
+	if errors.Is(err, stdhttp.ErrServerClosed) {
+		return nil
+	}
+	return err
+}
+
+// Shutdown gracefully stops the HTTP server.
+func (s *Server) Shutdown(ctx context.Context) error {
+	return s.http.Shutdown(ctx)
 }
 
 func (s *Server) handleHealth(w stdhttp.ResponseWriter, r *stdhttp.Request) {
