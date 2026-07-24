@@ -28,6 +28,7 @@ type App struct {
 	logger    *slog.Logger
 	inventory inventory.Service
 	auth      auth.Service
+	tokens    auth.TokenService
 	server    *atlashttp.Server
 	pool      *pgxpool.Pool
 }
@@ -49,6 +50,11 @@ func New(cfg config.Config) (*App, error) {
 
 	inventoryService := inventory.NewService(serverRepo)
 	authService := auth.NewService(userRepo, auth.BcryptHasher{})
+	tokenService := auth.NewJWTService(auth.JWTConfig{
+		Secret: []byte(cfg.JWTSecret),
+		Issuer: cfg.JWTIssuer,
+		TTL:    cfg.JWTAccessTokenTTL,
+	})
 	httpServer := atlashttp.New(cfg, log, inventoryService)
 
 	return &App{
@@ -56,6 +62,7 @@ func New(cfg config.Config) (*App, error) {
 		logger:    log,
 		inventory: inventoryService,
 		auth:      authService,
+		tokens:    tokenService,
 		server:    httpServer,
 		pool:      pool,
 	}, nil
