@@ -1,21 +1,24 @@
-package middleware
+package auth
 
 import (
-	"errors"
+	"context"
 	"net/http"
 	"strings"
 
-	"atlas/internal/auth"
 	"atlas/internal/httpx"
 )
 
-// JWTAuth returns a middleware that enforces a valid Bearer token.
-// Requests without a token or with an invalid token receive 401.
-// On success the parsed Claims are stored in the request context.
-func JWTAuth(tokens auth.TokenService) Middleware {
+// RequireAuth returns an HTTP middleware that enforces a valid Bearer token.
+//
+// On success the parsed *Claims are stored in the request context and
+// can be retrieved with ClaimsFromContext.  The getRequestID parameter is
+// called to populate the requestId field of error responses; pass
+// middleware.RequestIDFromContext (or a no-op func) depending on what the
+// outer middleware chain provides.
+func RequireAuth(tokens TokenService, getRequestID func(context.Context) string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			reqID := RequestIDFromContext(r.Context())
+			reqID := getRequestID(r.Context())
 
 			raw := r.Header.Get("Authorization")
 			if raw == "" {
@@ -31,15 +34,11 @@ func JWTAuth(tokens auth.TokenService) Middleware {
 
 			claims, err := tokens.Parse(strings.TrimPrefix(raw, prefix))
 			if err != nil {
-				if errors.Is(err, auth.ErrInvalidCredentials) {
-					httpx.WriteError(w, http.StatusUnauthorized, "unauthorized", "invalid or expired token", reqID)
-					return
-				}
 				httpx.WriteError(w, http.StatusUnauthorized, "unauthorized", "invalid or expired token", reqID)
 				return
 			}
 
-			next.ServeHTTP(w, r.WithContext(auth.WithClaims(r.Context(), claims)))
+			next.ServeHTTP(w, r.WithContext(WithClaims(r.Context(), claims)))
 		})
 	}
 }

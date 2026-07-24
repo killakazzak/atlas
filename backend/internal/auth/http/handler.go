@@ -28,9 +28,9 @@ func NewHandler(service auth.Service, tokens auth.TokenService, ttl time.Duratio
 }
 
 // Register mounts auth routes on mux.
-// /auth/me is wrapped with JWTAuth middleware so it requires a valid token.
+// /auth/me is wrapped with RequireAuth middleware so it requires a valid token.
 func (h *Handler) Register(mux *nethttp.ServeMux) {
-	requireAuth := middleware.JWTAuth(h.tokens)
+	requireAuth := auth.RequireAuth(h.tokens, middleware.RequestIDFromContext)
 
 	mux.HandleFunc("POST /api/v1/auth/login", h.login)
 	mux.HandleFunc("POST /api/v1/auth/logout", h.logout)
