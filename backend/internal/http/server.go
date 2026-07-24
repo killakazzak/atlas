@@ -5,13 +5,13 @@ package http
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"log/slog"
 	stdhttp "net/http"
 
 	"atlas/internal/config"
-	atlashttp "atlas/internal/http/middleware"
+	"atlas/internal/http/middleware"
+	"atlas/internal/httpx"
 	"atlas/internal/inventory"
 	inventoryhttp "atlas/internal/inventory/http"
 	"atlas/internal/version"
@@ -39,10 +39,10 @@ func New(cfg config.Config, logger *slog.Logger, inventoryService inventory.Serv
 	}
 	s.routes(inventoryService)
 
-	chain := atlashttp.Chain(
-		atlashttp.Recovery(logger),
-		atlashttp.RequestID,
-		atlashttp.Logging(logger),
+	chain := middleware.Chain(
+		middleware.Recovery(logger),
+		middleware.RequestID,
+		middleware.Logging(logger),
 	)
 	s.http.Handler = chain(mux)
 
@@ -52,7 +52,7 @@ func New(cfg config.Config, logger *slog.Logger, inventoryService inventory.Serv
 func (s *Server) routes(inventoryService inventory.Service) {
 	s.mux.HandleFunc("GET /health", s.handleHealth)
 	s.mux.HandleFunc("GET /version", s.handleVersion)
-	inventoryhttp.NewHandler(inventoryService).Register(s.mux)
+	inventoryhttp.NewHandler(inventoryService, s.logger).Register(s.mux)
 }
 
 // Handler returns the server's root http.Handler. Useful for testing.
@@ -76,15 +76,9 @@ func (s *Server) Shutdown(ctx context.Context) error {
 }
 
 func (s *Server) handleHealth(w stdhttp.ResponseWriter, r *stdhttp.Request) {
-	writeJSON(w, stdhttp.StatusOK, map[string]string{"status": "ok"})
+	httpx.WriteJSON(w, stdhttp.StatusOK, map[string]string{"status": "ok"})
 }
 
 func (s *Server) handleVersion(w stdhttp.ResponseWriter, r *stdhttp.Request) {
-	writeJSON(w, stdhttp.StatusOK, version.Current())
-}
-
-func writeJSON(w stdhttp.ResponseWriter, status int, body any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(body)
+	httpx.WriteJSON(w, stdhttp.StatusOK, version.Current())
 }

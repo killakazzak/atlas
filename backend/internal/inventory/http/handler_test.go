@@ -3,6 +3,8 @@ package http_test
 import (
 	"bytes"
 	"encoding/json"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -11,13 +13,30 @@ import (
 	inventoryhttp "atlas/internal/inventory/http"
 )
 
+func nopLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
 func newTestMux(t *testing.T) *http.ServeMux {
 	t.Helper()
 	repo := inventory.NewMemoryServerRepository()
 	svc := inventory.NewService(repo)
 	mux := http.NewServeMux()
-	inventoryhttp.NewHandler(svc).Register(mux)
+	inventoryhttp.NewHandler(svc, nopLogger()).Register(mux)
 	return mux
+}
+
+func errorCode(t *testing.T, body []byte) string {
+	t.Helper()
+	var resp struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		t.Fatalf("decode error response: %v", err)
+	}
+	return resp.Error.Code
 }
 
 func TestHandler_ServersAPI(t *testing.T) {
@@ -38,7 +57,7 @@ func TestHandler_ServersAPI(t *testing.T) {
 		t.Fatalf("list len = %d, want 0", len(list))
 	}
 
-	// Invalid create
+	// Invalid create — missing name
 	rec = httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest(
 		http.MethodPost,
@@ -47,6 +66,9 @@ func TestHandler_ServersAPI(t *testing.T) {
 	))
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("create invalid status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+	if code := errorCode(t, rec.Body.Bytes()); code != "validation_error" {
+		t.Fatalf("expected validation_error, got %q", code)
 	}
 
 	// Create
@@ -75,11 +97,14 @@ func TestHandler_ServersAPI(t *testing.T) {
 		t.Fatalf("get status = %d, want %d", rec.Code, http.StatusOK)
 	}
 
-	// Get missing
+	// Get missing → 404 not_found
 	rec = httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/servers/missing", nil))
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("get missing status = %d, want %d", rec.Code, http.StatusNotFound)
+	}
+	if code := errorCode(t, rec.Body.Bytes()); code != "not_found" {
+		t.Fatalf("expected not_found, got %q", code)
 	}
 
 	// Update
@@ -103,7 +128,7 @@ func TestHandler_ServersAPI(t *testing.T) {
 		t.Fatalf("update changed id: got %v, want %s", updated["id"], id)
 	}
 
-	// Update missing
+	// Update missing → 404 not_found
 	rec = httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest(
 		http.MethodPut,
@@ -113,6 +138,9 @@ func TestHandler_ServersAPI(t *testing.T) {
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("update missing status = %d, want %d", rec.Code, http.StatusNotFound)
 	}
+	if code := errorCode(t, rec.Body.Bytes()); code != "not_found" {
+		t.Fatalf("expected not_found, got %q", code)
+	}
 
 	// Delete
 	rec = httptest.NewRecorder()
@@ -121,10 +149,13 @@ func TestHandler_ServersAPI(t *testing.T) {
 		t.Fatalf("delete status = %d, want %d", rec.Code, http.StatusNoContent)
 	}
 
-	// Delete missing
+	// Delete missing → 404 not_found
 	rec = httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/v1/servers/"+id, nil))
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("delete missing status = %d, want %d", rec.Code, http.StatusNotFound)
+	}
+	if code := errorCode(t, rec.Body.Bytes()); code != "not_found" {
+		t.Fatalf("expected not_found, got %q", code)
 	}
 }

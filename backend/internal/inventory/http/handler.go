@@ -3,23 +3,26 @@
 package http
 
 import (
-	"encoding/json"
 	"errors"
+	"log/slog"
 	nethttp "net/http"
 	"strings"
 	"time"
 
+	"atlas/internal/http/middleware"
+	"atlas/internal/httpx"
 	"atlas/internal/inventory"
 )
 
 // Handler serves inventory HTTP endpoints using the Inventory Service.
 type Handler struct {
 	service inventory.Service
+	logger  *slog.Logger
 }
 
 // NewHandler constructs an inventory HTTP Handler.
-func NewHandler(service inventory.Service) *Handler {
-	return &Handler{service: service}
+func NewHandler(service inventory.Service, logger *slog.Logger) *Handler {
+	return &Handler{service: service, logger: logger}
 }
 
 // Register mounts inventory routes on mux.
@@ -50,14 +53,12 @@ type createServerRequest struct {
 	Status          string `json:"status"`
 }
 
-type errorResponse struct {
-	Error string `json:"error"`
-}
-
 func (h *Handler) listServers(w nethttp.ResponseWriter, r *nethttp.Request) {
 	servers, err := h.service.ListServers(r.Context())
 	if err != nil {
-		writeError(w, nethttp.StatusInternalServerError, "failed to list servers")
+		reqID := middleware.RequestIDFromContext(r.Context())
+		h.logger.Error("listServers failed", "error", err, "request_id", reqID)
+		httpx.WriteError(w, nethttp.StatusInternalServerError, "internal_error", "internal server error", reqID)
 		return
 	}
 
@@ -65,32 +66,30 @@ func (h *Handler) listServers(w nethttp.ResponseWriter, r *nethttp.Request) {
 	for i := range servers {
 		out = append(out, toServerResponse(&servers[i]))
 	}
-	writeJSON(w, nethttp.StatusOK, out)
+	httpx.WriteJSON(w, nethttp.StatusOK, out)
 }
 
 func (h *Handler) getServer(w nethttp.ResponseWriter, r *nethttp.Request) {
-	id := r.PathValue("id")
-	if strings.TrimSpace(id) == "" {
-		writeError(w, nethttp.StatusBadRequest, "id is required")
+	id := strings.TrimSpace(r.PathValue("id"))
+	if id == "" {
+		httpx.WriteError(w, nethttp.StatusBadRequest, "validation_error", "id is required", middleware.RequestIDFromContext(r.Context()))
 		return
 	}
 
 	server, err := h.service.GetServer(r.Context(), id)
 	if err != nil {
-		writeServiceError(w, err)
+		h.writeServiceError(w, r, err)
 		return
 	}
-	writeJSON(w, nethttp.StatusOK, toServerResponse(server))
+	httpx.WriteJSON(w, nethttp.StatusOK, toServerResponse(server))
 }
 
 func (h *Handler) createServer(w nethttp.ResponseWriter, r *nethttp.Request) {
 	defer r.Body.Close()
 
 	var req createServerRequest
-	dec := json.NewDecoder(r.Body)
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&req); err != nil {
-		writeError(w, nethttp.StatusBadRequest, "invalid JSON body")
+	if err := httpx.DecodeJSON(r, &req); err != nil {
+		httpx.WriteError(w, nethttp.StatusBadRequest, "bad_request", err.Error(), middleware.RequestIDFromContext(r.Context()))
 		return
 	}
 
@@ -101,11 +100,11 @@ func (h *Handler) createServer(w nethttp.ResponseWriter, r *nethttp.Request) {
 	req.Status = strings.TrimSpace(req.Status)
 
 	if req.Name == "" {
-		writeError(w, nethttp.StatusBadRequest, "name is required")
+		httpx.WriteError(w, nethttp.StatusBadRequest, "validation_error", "name is required", middleware.RequestIDFromContext(r.Context()))
 		return
 	}
 	if req.Hostname == "" {
-		writeError(w, nethttp.StatusBadRequest, "hostname is required")
+		httpx.WriteError(w, nethttp.StatusBadRequest, "validation_error", "hostname is required", middleware.RequestIDFromContext(r.Context()))
 		return
 	}
 
@@ -123,33 +122,31 @@ func (h *Handler) createServer(w nethttp.ResponseWriter, r *nethttp.Request) {
 	}
 
 	if err := h.service.RegisterServer(r.Context(), server); err != nil {
-		writeServiceError(w, err)
+		h.writeServiceError(w, r, err)
 		return
 	}
 
-	writeJSON(w, nethttp.StatusCreated, toServerResponse(server))
+	httpx.WriteJSON(w, nethttp.StatusCreated, toServerResponse(server))
 }
 
 func (h *Handler) updateServer(w nethttp.ResponseWriter, r *nethttp.Request) {
 	defer r.Body.Close()
 
-	id := r.PathValue("id")
-	if strings.TrimSpace(id) == "" {
-		writeError(w, nethttp.StatusBadRequest, "id is required")
+	id := strings.TrimSpace(r.PathValue("id"))
+	if id == "" {
+		httpx.WriteError(w, nethttp.StatusBadRequest, "validation_error", "id is required", middleware.RequestIDFromContext(r.Context()))
 		return
 	}
 
 	existing, err := h.service.GetServer(r.Context(), id)
 	if err != nil {
-		writeServiceError(w, err)
+		h.writeServiceError(w, r, err)
 		return
 	}
 
 	var req createServerRequest
-	dec := json.NewDecoder(r.Body)
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&req); err != nil {
-		writeError(w, nethttp.StatusBadRequest, "invalid JSON body")
+	if err := httpx.DecodeJSON(r, &req); err != nil {
+		httpx.WriteError(w, nethttp.StatusBadRequest, "bad_request", err.Error(), middleware.RequestIDFromContext(r.Context()))
 		return
 	}
 
@@ -160,11 +157,11 @@ func (h *Handler) updateServer(w nethttp.ResponseWriter, r *nethttp.Request) {
 	req.Status = strings.TrimSpace(req.Status)
 
 	if req.Name == "" {
-		writeError(w, nethttp.StatusBadRequest, "name is required")
+		httpx.WriteError(w, nethttp.StatusBadRequest, "validation_error", "name is required", middleware.RequestIDFromContext(r.Context()))
 		return
 	}
 	if req.Hostname == "" {
-		writeError(w, nethttp.StatusBadRequest, "hostname is required")
+		httpx.WriteError(w, nethttp.StatusBadRequest, "validation_error", "hostname is required", middleware.RequestIDFromContext(r.Context()))
 		return
 	}
 
@@ -173,7 +170,6 @@ func (h *Handler) updateServer(w nethttp.ResponseWriter, r *nethttp.Request) {
 		status = inventory.ServerStatus(req.Status)
 	}
 
-	// Preserve identity and creation time; apply the mutable fields.
 	existing.Name = req.Name
 	existing.Hostname = req.Hostname
 	existing.IP = req.IP
@@ -181,25 +177,38 @@ func (h *Handler) updateServer(w nethttp.ResponseWriter, r *nethttp.Request) {
 	existing.Status = status
 
 	if err := h.service.UpdateServer(r.Context(), existing); err != nil {
-		writeServiceError(w, err)
+		h.writeServiceError(w, r, err)
 		return
 	}
 
-	writeJSON(w, nethttp.StatusOK, toServerResponse(existing))
+	httpx.WriteJSON(w, nethttp.StatusOK, toServerResponse(existing))
 }
 
 func (h *Handler) deleteServer(w nethttp.ResponseWriter, r *nethttp.Request) {
-	id := r.PathValue("id")
-	if strings.TrimSpace(id) == "" {
-		writeError(w, nethttp.StatusBadRequest, "id is required")
+	id := strings.TrimSpace(r.PathValue("id"))
+	if id == "" {
+		httpx.WriteError(w, nethttp.StatusBadRequest, "validation_error", "id is required", middleware.RequestIDFromContext(r.Context()))
 		return
 	}
 
 	if err := h.service.DeleteServer(r.Context(), id); err != nil {
-		writeServiceError(w, err)
+		h.writeServiceError(w, r, err)
 		return
 	}
 	w.WriteHeader(nethttp.StatusNoContent)
+}
+
+func (h *Handler) writeServiceError(w nethttp.ResponseWriter, r *nethttp.Request, err error) {
+	reqID := middleware.RequestIDFromContext(r.Context())
+	switch {
+	case errors.Is(err, inventory.ErrNotFound):
+		httpx.WriteError(w, nethttp.StatusNotFound, "not_found", "server not found", reqID)
+	case errors.Is(err, inventory.ErrInvalidServer):
+		httpx.WriteError(w, nethttp.StatusBadRequest, "validation_error", err.Error(), reqID)
+	default:
+		h.logger.Error("unexpected service error", "error", err, "request_id", reqID)
+		httpx.WriteError(w, nethttp.StatusInternalServerError, "internal_error", "internal server error", reqID)
+	}
 }
 
 func toServerResponse(server *inventory.Server) serverResponse {
@@ -213,25 +222,4 @@ func toServerResponse(server *inventory.Server) serverResponse {
 		CreatedAt:       server.CreatedAt,
 		UpdatedAt:       server.UpdatedAt,
 	}
-}
-
-func writeServiceError(w nethttp.ResponseWriter, err error) {
-	switch {
-	case errors.Is(err, inventory.ErrNotFound):
-		writeError(w, nethttp.StatusNotFound, "server not found")
-	case errors.Is(err, inventory.ErrInvalidServer):
-		writeError(w, nethttp.StatusBadRequest, err.Error())
-	default:
-		writeError(w, nethttp.StatusInternalServerError, "internal server error")
-	}
-}
-
-func writeError(w nethttp.ResponseWriter, status int, message string) {
-	writeJSON(w, status, errorResponse{Error: message})
-}
-
-func writeJSON(w nethttp.ResponseWriter, status int, body any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(body)
 }
