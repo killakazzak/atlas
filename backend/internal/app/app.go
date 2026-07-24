@@ -55,7 +55,7 @@ func New(cfg config.Config) (*App, error) {
 		Issuer: cfg.JWTIssuer,
 		TTL:    cfg.JWTAccessTokenTTL,
 	})
-	httpServer := atlashttp.New(cfg, log, inventoryService)
+	httpServer := atlashttp.New(cfg, log, inventoryService, authService, tokenService)
 
 	return &App{
 		cfg:       cfg,

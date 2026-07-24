@@ -9,6 +9,8 @@ import (
 	"log/slog"
 	stdhttp "net/http"
 
+	"atlas/internal/auth"
+	authhttp "atlas/internal/auth/http"
 	"atlas/internal/config"
 	"atlas/internal/http/middleware"
 	"atlas/internal/httpx"
@@ -27,7 +29,7 @@ type Server struct {
 }
 
 // New constructs a Server with registered routes.
-func New(cfg config.Config, logger *slog.Logger, inventoryService inventory.Service) *Server {
+func New(cfg config.Config, logger *slog.Logger, inventoryService inventory.Service, authService auth.Service, tokenService auth.TokenService) *Server {
 	mux := stdhttp.NewServeMux()
 	s := &Server{
 		cfg:    cfg,
@@ -38,7 +40,7 @@ func New(cfg config.Config, logger *slog.Logger, inventoryService inventory.Serv
 			Handler: mux,
 		},
 	}
-	s.routes(inventoryService)
+	s.routes(inventoryService, authService, tokenService)
 
 	chain := middleware.Chain(
 		middleware.Recovery(logger),
@@ -50,10 +52,11 @@ func New(cfg config.Config, logger *slog.Logger, inventoryService inventory.Serv
 	return s
 }
 
-func (s *Server) routes(inventoryService inventory.Service) {
+func (s *Server) routes(inventoryService inventory.Service, authService auth.Service, tokenService auth.TokenService) {
 	s.mux.HandleFunc("GET /health", s.handleHealth)
 	s.mux.HandleFunc("GET /version", s.handleVersion)
 	inventoryhttp.NewHandler(inventoryService, s.logger).Register(s.mux)
+	authhttp.NewHandler(authService, tokenService, s.cfg.JWTAccessTokenTTL, s.logger).Register(s.mux)
 	atlasdocs.Register(s.mux)
 }
 
