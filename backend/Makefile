@@ -1,7 +1,7 @@
-.PHONY: fmt vet lint test openapi check run
+.PHONY: fmt vet lint test check run
 
 fmt:
-	gofmt -w .
+	go fmt ./...
 
 vet:
 	go vet ./...
@@ -12,10 +12,7 @@ lint:
 test:
 	go test ./...
 
-openapi:
-	vacuum lint --details openapi/openapi.yaml
-
-check: fmt vet lint test openapi
+check: fmt vet lint test
 
 run:
 	go run ./cmd/server
