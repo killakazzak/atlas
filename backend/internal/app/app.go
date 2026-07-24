@@ -26,7 +26,7 @@ func New(cfg config.Config) (*App, error) {
 
 	serverRepo := inventory.NewMemoryServerRepository()
 	inventoryService := inventory.NewService(serverRepo)
-	httpServer := atlashttp.New(cfg, log)
+	httpServer := atlashttp.New(cfg, log, inventoryService)
 
 	return &App{
 		cfg:       cfg,

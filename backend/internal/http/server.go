@@ -11,6 +11,8 @@ import (
 	stdhttp "net/http"
 
 	"atlas/internal/config"
+	"atlas/internal/inventory"
+	inventoryhttp "atlas/internal/inventory/http"
 	"atlas/internal/version"
 )
 
@@ -23,7 +25,7 @@ type Server struct {
 }
 
 // New constructs a Server with registered routes.
-func New(cfg config.Config, logger *slog.Logger) *Server {
+func New(cfg config.Config, logger *slog.Logger, inventoryService inventory.Service) *Server {
 	mux := stdhttp.NewServeMux()
 	s := &Server{
 		cfg:    cfg,
@@ -34,13 +36,14 @@ func New(cfg config.Config, logger *slog.Logger) *Server {
 			Handler: mux,
 		},
 	}
-	s.routes()
+	s.routes(inventoryService)
 	return s
 }
 
-func (s *Server) routes() {
+func (s *Server) routes(inventoryService inventory.Service) {
 	s.mux.HandleFunc("GET /health", s.handleHealth)
 	s.mux.HandleFunc("GET /version", s.handleVersion)
+	inventoryhttp.NewHandler(inventoryService).Register(s.mux)
 }
 
 // Run starts the HTTP listener and blocks until it fails or Shutdown is called.
