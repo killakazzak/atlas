@@ -2,39 +2,33 @@
 //
 // Project layout (under backend/):
 //
-//	cmd/server  — process entrypoint (this package); wires HTTP and starts the process
-//	internal/   — private application code (not importable by other modules)
-//	pkg/        — reusable libraries safe for external consumers
-//	api/        — API contracts (OpenAPI specs, shared request/response shapes)
-//	configs/    — configuration files and examples for local/runtime settings
+//	cmd/server         — process entrypoint; loads config and starts the server
+//	internal/config    — environment-based configuration
+//	internal/http      — HTTP routing and server lifecycle
+//	internal/logger    — structured logging setup
+//	internal/version   — service name and version metadata
+//	pkg/               — reusable libraries safe for external consumers
+//	api/               — API contracts (OpenAPI specs, shared shapes)
+//	configs/           — configuration files and examples
 //
 // This MVP uses only the Go standard library: no database, messaging, auth, or Docker.
 package main
 
 import (
-	"encoding/json"
-	"log/slog"
-	"net/http"
 	"os"
+
+	"atlas/internal/config"
+	atlashttp "atlas/internal/http"
+	"atlas/internal/logger"
 )
 
 func main() {
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	log := logger.New()
+	cfg := config.Load()
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /health", healthHandler)
-
-	addr := ":8080"
-	logger.Info("starting HTTP server", "addr", addr)
-	if err := http.ListenAndServe(addr, mux); err != nil {
-		logger.Error("server stopped", "error", err)
+	srv := atlashttp.New(cfg, log)
+	if err := srv.Run(); err != nil {
+		log.Error("server stopped", "error", err)
 		os.Exit(1)
 	}
-}
-
-// healthHandler responds with a simple readiness payload for load balancers and probes.
-func healthHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
