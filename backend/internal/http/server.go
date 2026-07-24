@@ -15,6 +15,7 @@ import (
 	"atlas/internal/inventory"
 	inventoryhttp "atlas/internal/inventory/http"
 	"atlas/internal/version"
+	atlasdocs "atlas/openapi"
 )
 
 // Server owns the HTTP mux and listen configuration.
@@ -53,6 +54,7 @@ func (s *Server) routes(inventoryService inventory.Service) {
 	s.mux.HandleFunc("GET /health", s.handleHealth)
 	s.mux.HandleFunc("GET /version", s.handleVersion)
 	inventoryhttp.NewHandler(inventoryService, s.logger).Register(s.mux)
+	atlasdocs.Register(s.mux)
 }
 
 // Handler returns the server's root http.Handler. Useful for testing.

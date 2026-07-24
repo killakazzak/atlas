@@ -8,10 +8,10 @@ import "time"
 type ServerStatus string
 
 const (
-	ServerStatusUnknown   ServerStatus = "unknown"
-	ServerStatusOnline    ServerStatus = "online"
-	ServerStatusOffline   ServerStatus = "offline"
-	ServerStatusDegraded  ServerStatus = "degraded"
+	ServerStatusUnknown     ServerStatus = "unknown"
+	ServerStatusOnline      ServerStatus = "online"
+	ServerStatusOffline     ServerStatus = "offline"
+	ServerStatusDegraded    ServerStatus = "degraded"
 	ServerStatusMaintenance ServerStatus = "maintenance"
 )
 

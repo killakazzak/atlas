@@ -4,10 +4,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
-	atlashttp "atlas/internal/http"
 	"atlas/internal/config"
+	atlashttp "atlas/internal/http"
 	"atlas/internal/inventory"
 	"atlas/internal/logger"
 )
@@ -60,6 +61,41 @@ func TestHealth_ResponseBody(t *testing.T) {
 	}
 	if body["status"] != "ok" {
 		t.Fatalf("unexpected body: %v", body)
+	}
+}
+
+func TestOpenAPISpec_Returns200(t *testing.T) {
+	h := newTestServer(t)
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/openapi/openapi.yaml", nil)
+	h.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	if ct := w.Header().Get("Content-Type"); ct != "application/yaml" {
+		t.Fatalf("expected Content-Type application/yaml, got %q", ct)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "openapi:") {
+		t.Fatal("response does not look like an OpenAPI spec")
+	}
+}
+
+func TestSwaggerUI_Returns200(t *testing.T) {
+	h := newTestServer(t)
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/swagger", nil)
+	h.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	if ct := w.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/html") {
+		t.Fatalf("expected text/html Content-Type, got %q", ct)
+	}
+	if !strings.Contains(w.Body.String(), "swagger-ui") {
+		t.Fatal("response does not contain swagger-ui")
 	}
 }
 

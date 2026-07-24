@@ -2,10 +2,10 @@ package middleware_test
 
 import (
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"io"
 	"testing"
 
 	"atlas/internal/http/middleware"

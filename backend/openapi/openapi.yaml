@@ -1,0 +1,254 @@
+openapi: 3.1.0
+
+info:
+  title: Atlas API
+  version: 0.1.0
+  description: REST API for Atlas infrastructure management platform.
+  contact:
+    name: Atlas Team
+  license:
+    name: Apache-2.0
+    identifier: Apache-2.0
+
+tags:
+  - name: system
+    description: Service health and version.
+  - name: inventory
+    description: Inventory management.
+
+servers:
+  - url: http://localhost:8080
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      description: Returns the current health status of the service.
+      operationId: getHealth
+      tags: [system]
+      responses:
+        "200":
+          description: Service is healthy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /version:
+    get:
+      summary: Service version
+      description: Returns the name and version of the running service build.
+      operationId: getVersion
+      tags: [system]
+      responses:
+        "200":
+          description: Current service version.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VersionResponse"
+
+  /api/v1/servers:
+    get:
+      summary: List servers
+      description: Returns all servers registered in the inventory.
+      operationId: listServers
+      tags: [inventory]
+      responses:
+        "200":
+          description: List of all servers.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Server"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    post:
+      summary: Register a server
+      description: Registers a new managed server in the inventory.
+      operationId: createServer
+      tags: [inventory]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateServerRequest"
+      responses:
+        "201":
+          description: Server registered successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Server"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/servers/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Server identifier.
+
+    get:
+      summary: Get a server
+      description: Returns a single server by its identifier.
+      operationId: getServer
+      tags: [inventory]
+      responses:
+        "200":
+          description: Server found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Server"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    delete:
+      summary: Delete a server
+      description: Removes a server from the inventory permanently.
+      operationId: deleteServer
+      tags: [inventory]
+      responses:
+        "204":
+          description: Server deleted.
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+components:
+  responses:
+    BadRequest:
+      description: Invalid request.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+    NotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+    InternalError:
+      description: Internal server error.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+  schemas:
+    HealthResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          example: ok
+
+    VersionResponse:
+      type: object
+      required: [name, version]
+      properties:
+        name:
+          type: string
+          example: atlas
+        version:
+          type: string
+          example: 0.1.0
+
+    Server:
+      type: object
+      description: Managed infrastructure server.
+      required: [id, name, hostname, ip, operatingSystem, status, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          example: "01hw3k2q9z8vt3p5n6m4r7x0yb"
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: prod-app-01
+        hostname:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: prod-app-01.internal
+        ip:
+          type: string
+          description: IPv4 or IPv6 address.
+          example: 10.0.1.10
+        operatingSystem:
+          type: string
+          example: Windows Server 2022
+        status:
+          type: string
+          enum: [unknown, online, offline, error, degraded, maintenance]
+          example: unknown
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateServerRequest:
+      type: object
+      description: Request to register a new server.
+      required: [name, hostname]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: prod-app-01
+        hostname:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: prod-app-01.internal
+        ip:
+          type: string
+          description: IPv4 or IPv6 address.
+          example: 10.0.1.10
+        operatingSystem:
+          type: string
+          example: Windows Server 2022
+
+    ApiError:
+      type: object
+      description: Standard API error detail.
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          example: not_found
+        message:
+          type: string
+          example: server not found
+
+    ErrorResponse:
+      type: object
+      required: [error, requestId]
+      properties:
+        error:
+          $ref: "#/components/schemas/ApiError"
+        requestId:
+          type: string
+          description: Unique request identifier for troubleshooting.
+          example: a3f1b2c4d5e6f708
