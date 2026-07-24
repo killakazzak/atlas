@@ -11,7 +11,7 @@ if (-not $env:DATABASE_URL) {
     $env:DATABASE_URL = "postgres://atlas:atlas@localhost:5432/atlas?sslmode=disable"
 }
 
-$migrationsPath = Join-Path $repoRoot "backend\migrations"
+$migrationsPath = (Join-Path $repoRoot "backend\migrations") -replace '\\', '/'
 
 Write-Host "Running migrations from $migrationsPath..."
 migrate -path $migrationsPath -database $env:DATABASE_URL up
