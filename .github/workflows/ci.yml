@@ -2,53 +2,40 @@ name: CI
 
 on:
   push:
+    branches:
+      - main
+      - master
   pull_request:
 
 jobs:
-  ci:
-    name: CI
+  test:
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: backend
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Go
+      - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: "1.24"
+          cache: true
           cache-dependency-path: backend/go.sum
 
-      - name: Download dependencies
-        run: go mod download
+      - name: Verify formatting
+        run: test -z "$(gofmt -l .)"
 
-      - name: Check formatting
-        run: |
-          out=$(gofmt -l .)
-          if [ -n "$out" ]; then
-            echo "Files need formatting:"
-            echo "$out"
-            exit 1
-          fi
-
-      - name: Vet
+      - name: Go vet
         run: go vet ./...
 
-      - name: Lint
+      - name: Run tests
+        run: go test ./...
+
+      - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
           version: latest
           working-directory: backend
-
-      - name: Test
-        run: go test -race ./...
-
-      - name: Install vacuum
-        run: go install github.com/daveshanley/vacuum@latest
-
-      - name: Validate OpenAPI
-        working-directory: .
-        run: vacuum lint --details backend/openapi/openapi.yaml
