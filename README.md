@@ -29,6 +29,10 @@ monitoring, and orchestration of enterprise 1C environments.
 
 ## Architecture
 
+> Source: [`docs/architecture/architecture.drawio`](docs/architecture/architecture.drawio)
+> — open with [diagrams.net](https://app.diagrams.net) or the
+> [VS Code draw.io extension](https://marketplace.visualstudio.com/items?itemName=hediet.vscode-drawio).
+
 ```
 ┌─────────────────────────────────────────────────┐
 │                   HTTP Client                   │
