@@ -23,8 +23,8 @@ func (f *fakeServerRepository) List(context.Context) ([]Server, error) {
 func (f *fakeServerRepository) Create(_ context.Context, server *Server) error {
 	f.createCalls++
 	if server != nil {
-		copy := *server
-		f.lastCreated = &copy
+		clone := *server
+		f.lastCreated = &clone
 	}
 	return f.createErr
 }

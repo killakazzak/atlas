@@ -85,7 +85,7 @@ func (h *Handler) getServer(w nethttp.ResponseWriter, r *nethttp.Request) {
 }
 
 func (h *Handler) createServer(w nethttp.ResponseWriter, r *nethttp.Request) {
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 
 	var req createServerRequest
 	if err := httpx.DecodeJSON(r, &req); err != nil {
@@ -130,7 +130,7 @@ func (h *Handler) createServer(w nethttp.ResponseWriter, r *nethttp.Request) {
 }
 
 func (h *Handler) updateServer(w nethttp.ResponseWriter, r *nethttp.Request) {
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 
 	id := strings.TrimSpace(r.PathValue("id"))
 	if id == "" {

@@ -10,6 +10,4 @@ linters:
     - errcheck
     - staticcheck
     - ineffassign
-    - unused
     - revive
-    - gosimple

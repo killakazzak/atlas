@@ -13,7 +13,6 @@ Atlas provides a single authoritative source of truth for 1C infrastructure: hos
 ## Features
 
 - Inventory management for servers, clusters, and infobases
-- Agent-based monitoring with heartbeat and status tracking
 - REST API with structured error responses and request tracing
 - OpenAPI 3.1 specification with embedded Swagger UI
 - PostgreSQL persistence with versioned migrations
@@ -25,9 +24,9 @@ Atlas provides a single authoritative source of truth for 1C infrastructure: hos
 
 | Layer | Technology |
 |-------|------------|
-| Backend | Go |
-| Console | TypeScript, React |
-| Agents | Go (Windows and Linux) |
+| Backend | Go 1.25 |
+| Console | TypeScript, React (Phase 2) |
+| Agents | Go — Windows and Linux (Phase 2) |
 | Database | PostgreSQL 17 |
 | Message broker | RabbitMQ 3.x (Phase 2) |
 | API contract | REST, OpenAPI 3.1 |
@@ -36,24 +35,20 @@ Atlas provides a single authoritative source of truth for 1C infrastructure: hos
 
 Full design: [Architecture](docs/architecture/architecture.md)
 
-## Getting Started
+## Requirements
 
-**Prerequisites**
-
-- [Docker Desktop](https://www.docker.com/products/docker-desktop)
 - [Go 1.25+](https://go.dev/dl/)
+- [Docker Desktop](https://www.docker.com/products/docker-desktop)
 - [golang-migrate CLI](https://github.com/golang-migrate/migrate)
+- [golangci-lint](https://golangci-lint.run/usage/install/) (for local linting)
+- [vacuum](https://quobix.com/vacuum/) (for local OpenAPI validation)
 
-**Clone and enter the repository**
+## Quick Start
 
 ```bash
 git clone https://github.com/killakazzak/atlas.git
 cd atlas
 ```
-
-## Running Locally
-
-Start PostgreSQL, apply migrations, and run the server:
 
 ```powershell
 .\scripts\db-up.ps1
@@ -61,19 +56,9 @@ Start PostgreSQL, apply migrations, and run the server:
 .\scripts\run-local.ps1
 ```
 
-The server starts on `http://localhost:8080`.
+The server starts at `http://localhost:8080`.
 
-Stop PostgreSQL when done:
-
-```powershell
-.\scripts\db-down.ps1
-```
-
-> Migrations are **not** applied automatically on server start. Always run `migrate-up.ps1` after pulling new migrations.
-
-## Database
-
-Atlas uses PostgreSQL 17 managed via Docker Compose.
+## Running Locally
 
 | Script | Purpose |
 |--------|---------|
@@ -81,11 +66,23 @@ Atlas uses PostgreSQL 17 managed via Docker Compose.
 | `.\scripts\db-down.ps1` | Stop PostgreSQL |
 | `.\scripts\migrate-up.ps1` | Apply all pending migrations |
 | `.\scripts\migrate-down.ps1` | Roll back one migration step |
+| `.\scripts\run-local.ps1` | Start the Atlas server |
 
 `DATABASE_URL` defaults to `postgres://atlas:atlas@localhost:5432/atlas?sslmode=disable`.
 Set it in your environment to override.
 
-Migrations live in `backend/migrations/` and follow the `golang-migrate` naming convention.
+> Migrations are **not** applied automatically on server start. Always run `migrate-up.ps1` after pulling new migrations.
+
+## Database
+
+PostgreSQL 17 is managed via Docker Compose. The container is defined in `docker-compose.yml` at the repository root.
+
+Migrations live in `backend/migrations/` and follow the [golang-migrate](https://github.com/golang-migrate/migrate) naming convention:
+
+```
+000001_create_servers.up.sql
+000001_create_servers.down.sql
+```
 
 ## API
 
@@ -100,7 +97,7 @@ Base URL: `http://localhost:8080`
 | `GET` | `/api/v1/servers/{id}` | Get a server |
 | `DELETE` | `/api/v1/servers/{id}` | Delete a server |
 
-All error responses use a consistent format:
+All error responses follow a consistent structure:
 
 ```json
 {
@@ -112,42 +109,42 @@ All error responses use a consistent format:
 }
 ```
 
-## Swagger UI
+## Swagger
 
 Interactive API documentation is available when the server is running:
 
 | Resource | URL |
 |----------|-----|
 | Swagger UI | http://localhost:8080/swagger |
-| OpenAPI spec (YAML) | http://localhost:8080/openapi/openapi.yaml |
+| OpenAPI spec | http://localhost:8080/openapi/openapi.yaml |
 
-The spec source lives at `backend/openapi/openapi.yaml`.
+The specification source is at `backend/openapi/openapi.yaml`.
 
 ## Development
 
-**Run all checks** (format, vet, lint, test, OpenAPI validation):
+Run all checks from the `backend/` directory:
+
+```bash
+go test ./...
+go vet ./...
+gofmt -l .
+golangci-lint run
+```
+
+Or using Make (requires `make` on PATH):
 
 ```bash
 cd backend
-make check
+make check   # fmt + vet + lint + test + openapi
+make test
+make run
 ```
 
-Individual targets:
+**Git workflow**
 
-```bash
-make fmt      # format source files
-make vet      # go vet
-make lint     # golangci-lint
-make test     # go test -race ./...
-make openapi  # validate openapi.yaml with vacuum
-make run      # start the server
-```
-
-**Workflow**
-
-1. Branch from `main`: `feature/<ticket>-<short-description>` or `fix/<ticket>-<short-description>`
+1. Branch from `main`: `feature/<ticket>-<slug>` or `fix/<ticket>-<slug>`
 2. Keep changes scoped; update docs when behavior or structure changes
-3. Open a pull request; require one reviewer approval
+3. Open a pull request with a linked issue; require one reviewer approval
 4. Record significant design decisions as ADRs in `docs/adr/`
 5. Merge via squash after CI passes
 
@@ -155,15 +152,15 @@ Full process: [Development Workflow](docs/architecture/development-workflow.md)
 
 ## CI
 
-GitHub Actions runs on every push and pull request:
+GitHub Actions runs on every push and pull request (Go 1.24, Ubuntu):
 
 | Step | Tool |
 |------|------|
-| Formatting | `gofmt` |
-| Static analysis | `go vet` |
+| Formatting | `gofmt -l` — fails if any file needs formatting |
+| Static analysis | `go vet ./...` |
 | Linting | `golangci-lint` |
-| Tests | `go test -race` |
-| OpenAPI validation | `vacuum` |
+| Tests | `go test -race ./...` |
+| OpenAPI validation | `vacuum lint` — fails if spec is invalid |
 
 Pipeline config: [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
 
@@ -171,24 +168,24 @@ Pipeline config: [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
 
 ```
 atlas/
-├── backend/                  # Go backend service
-│   ├── cmd/server/           # Entrypoint
+├── backend/                   # Go backend service
+│   ├── cmd/server/            # Entrypoint
 │   ├── internal/
-│   │   ├── app/              # Application wiring
-│   │   ├── config/           # Configuration
-│   │   ├── database/         # PostgreSQL connection
-│   │   ├── http/             # HTTP server and middleware
-│   │   ├── httpx/            # Shared HTTP helpers
-│   │   ├── inventory/        # Inventory domain and service
-│   │   └── logger/           # Structured logger
-│   ├── migrations/           # SQL migrations
-│   ├── openapi/              # OpenAPI 3.1 spec + embed
+│   │   ├── app/               # Application wiring
+│   │   ├── config/            # Configuration
+│   │   ├── database/          # PostgreSQL connection
+│   │   ├── http/              # HTTP server and middleware
+│   │   ├── httpx/             # Shared HTTP helpers
+│   │   ├── inventory/         # Inventory domain and service
+│   │   └── logger/            # Structured logger
+│   ├── migrations/            # SQL migrations
+│   ├── openapi/               # OpenAPI 3.1 spec + embed
 │   ├── Makefile
 │   └── .golangci.yml
-├── frontend/                 # React console (Phase 2)
-├── agent/                    # Atlas agent (Phase 2)
-├── docs/                     # Architecture, ADRs, vision
-├── scripts/                  # PowerShell dev scripts
+├── frontend/                  # React console (Phase 2)
+├── agent/                     # Atlas agent (Phase 2)
+├── docs/                      # Architecture, ADRs, vision
+├── scripts/                   # PowerShell dev scripts
 ├── docker-compose.yml
 └── .github/workflows/ci.yml
 ```

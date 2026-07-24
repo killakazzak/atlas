@@ -16,7 +16,7 @@ func nopLogger() *slog.Logger {
 }
 
 func TestRequestID_HeaderPresent(t *testing.T) {
-	handler := middleware.RequestID(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := middleware.RequestID(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
@@ -49,7 +49,7 @@ func TestRequestID_InContext(t *testing.T) {
 }
 
 func TestLogging_PreservesStatus(t *testing.T) {
-	handler := middleware.Logging(nopLogger())(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := middleware.Logging(nopLogger())(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusCreated)
 	}))
 
@@ -67,7 +67,7 @@ func TestRecovery_PanicReturns500(t *testing.T) {
 		middleware.Recovery(nopLogger()),
 		middleware.RequestID,
 	)
-	handler := chain(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := chain(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		panic("something went wrong")
 	}))
 
@@ -85,7 +85,7 @@ func TestRecovery_PanicErrorFormat(t *testing.T) {
 		middleware.Recovery(nopLogger()),
 		middleware.RequestID,
 	)
-	handler := chain(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := chain(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		panic("boom")
 	}))
 

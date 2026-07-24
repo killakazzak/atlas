@@ -77,10 +77,10 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	return s.http.Shutdown(ctx)
 }
 
-func (s *Server) handleHealth(w stdhttp.ResponseWriter, r *stdhttp.Request) {
+func (s *Server) handleHealth(w stdhttp.ResponseWriter, _ *stdhttp.Request) {
 	httpx.WriteJSON(w, stdhttp.StatusOK, map[string]string{"status": "ok"})
 }
 
-func (s *Server) handleVersion(w stdhttp.ResponseWriter, r *stdhttp.Request) {
+func (s *Server) handleVersion(w stdhttp.ResponseWriter, _ *stdhttp.Request) {
 	httpx.WriteJSON(w, stdhttp.StatusOK, version.Current())
 }

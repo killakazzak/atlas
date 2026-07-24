@@ -7,6 +7,7 @@ import "time"
 // ServerStatus is the operational state of a managed host.
 type ServerStatus string
 
+// Known ServerStatus values.
 const (
 	ServerStatusUnknown     ServerStatus = "unknown"
 	ServerStatusOnline      ServerStatus = "online"
@@ -18,6 +19,7 @@ const (
 // AgentStatus is the connectivity state of an Atlas agent.
 type AgentStatus string
 
+// Known AgentStatus values.
 const (
 	AgentStatusUnknown AgentStatus = "unknown"
 	AgentStatusActive  AgentStatus = "active"

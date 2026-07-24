@@ -6,6 +6,8 @@ import (
 	"net/http"
 )
 
+// Spec contains the embedded OpenAPI specification.
+//
 //go:embed openapi.yaml
 var Spec []byte
 
@@ -34,13 +36,13 @@ const swaggerHTML = `<!DOCTYPE html>
 
 // Register mounts /openapi/openapi.yaml and /swagger on mux.
 func Register(mux *http.ServeMux) {
-	mux.HandleFunc("GET /openapi/openapi.yaml", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /openapi/openapi.yaml", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/yaml")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(Spec)
 	})
 
-	mux.HandleFunc("GET /swagger", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /swagger", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(swaggerHTML))

@@ -30,6 +30,7 @@ func NewServerRepository(pool *pgxpool.Pool) *ServerRepository {
 
 const serverColumns = `id, name, hostname, ip, operating_system, status, created_at, updated_at`
 
+// Create inserts a new server into the database.
 func (r *ServerRepository) Create(ctx context.Context, server *inventory.Server) error {
 	if server == nil {
 		return fmt.Errorf("postgres create server: %w: server is nil", inventory.ErrInvalidServer)
@@ -69,6 +70,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
 	return nil
 }
 
+// GetByID returns the server with the given id, or ErrNotFound.
 func (r *ServerRepository) GetByID(ctx context.Context, id string) (*inventory.Server, error) {
 	const query = `
 SELECT id, name, hostname, ip, operating_system, status, created_at, updated_at
@@ -85,6 +87,7 @@ WHERE id = $1`
 	return server, nil
 }
 
+// List returns all servers ordered by creation time.
 func (r *ServerRepository) List(ctx context.Context) ([]inventory.Server, error) {
 	const query = `
 SELECT id, name, hostname, ip, operating_system, status, created_at, updated_at
@@ -111,6 +114,7 @@ ORDER BY created_at ASC, id ASC`
 	return servers, nil
 }
 
+// Update saves changes to an existing server.
 func (r *ServerRepository) Update(ctx context.Context, server *inventory.Server) error {
 	if server == nil {
 		return fmt.Errorf("postgres update server: %w: server is nil", inventory.ErrInvalidServer)
@@ -146,6 +150,7 @@ WHERE id = $1`
 	return nil
 }
 
+// Delete removes the server with the given id.
 func (r *ServerRepository) Delete(ctx context.Context, id string) error {
 	const query = `DELETE FROM servers WHERE id = $1`
 

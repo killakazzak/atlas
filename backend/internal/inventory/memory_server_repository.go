@@ -26,6 +26,7 @@ func NewMemoryServerRepository() *MemoryServerRepository {
 	}
 }
 
+// GetByID returns the server with the given id, or ErrNotFound.
 func (r *MemoryServerRepository) GetByID(_ context.Context, id string) (*Server, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -34,10 +35,11 @@ func (r *MemoryServerRepository) GetByID(_ context.Context, id string) (*Server,
 	if !ok {
 		return nil, fmt.Errorf("server %s: %w", id, ErrNotFound)
 	}
-	copy := *server
-	return &copy, nil
+	clone := *server
+	return &clone, nil
 }
 
+// List returns all servers in the store.
 func (r *MemoryServerRepository) List(_ context.Context) ([]Server, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -49,6 +51,7 @@ func (r *MemoryServerRepository) List(_ context.Context) ([]Server, error) {
 	return out, nil
 }
 
+// Create persists a new server, assigning an ID if one is not set.
 func (r *MemoryServerRepository) Create(_ context.Context, server *Server) error {
 	if server == nil {
 		return fmt.Errorf("%w: server is nil", ErrInvalidServer)
@@ -75,6 +78,7 @@ func (r *MemoryServerRepository) Create(_ context.Context, server *Server) error
 	return nil
 }
 
+// Update replaces an existing server's fields.
 func (r *MemoryServerRepository) Update(_ context.Context, server *Server) error {
 	if server == nil {
 		return fmt.Errorf("%w: server is nil", ErrInvalidServer)
@@ -93,6 +97,7 @@ func (r *MemoryServerRepository) Update(_ context.Context, server *Server) error
 	return nil
 }
 
+// Delete removes the server with the given id.
 func (r *MemoryServerRepository) Delete(_ context.Context, id string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
