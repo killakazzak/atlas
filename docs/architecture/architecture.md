@@ -97,10 +97,10 @@ Target stack for MVP implementation. Language choices for the Linux agent finali
 
 | Layer | Choice | Rationale |
 |-------|--------|-----------|
-| Backend services | .NET 8 | Strong enterprise adoption; native Windows interoperability for 1C environments |
+| Backend services | Go | Small static binaries, strong stdlib HTTP/concurrency, simple cross-platform deployment |
 | Atlas Console | TypeScript, React | Component ecosystem; typed API client generation from OpenAPI |
-| Windows agent | .NET 8 (Windows Service) | Shared libraries with backend; first-class Windows integration |
-| Linux agent | .NET 8 or Go | Final selection in Phase 2 ADR; Go favored if binary size is critical |
+| Windows agent | Go | Single shared language with backend; cross-compiled static binary |
+| Linux agent | Go | Single static binary, minimal runtime dependencies (confirm in Phase 2 ADR) |
 | Database | PostgreSQL 16 | ACID, JSON support, mature HA tooling |
 | Message broker | RabbitMQ 3.x | Reliable delivery, routing, operational familiarity |
 | API | REST + OpenAPI 3.x | Contract-first; optional gRPC for internal calls later |

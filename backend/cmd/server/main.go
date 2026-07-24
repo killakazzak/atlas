@@ -5,15 +5,18 @@
 //	cmd/server         — process entrypoint; loads config and starts the app
 //	internal/app       — composition root; wires dependencies and lifecycle
 //	internal/config    — environment-based configuration
+//	internal/database  — PostgreSQL connection pool helpers
 //	internal/http      — HTTP routing and server lifecycle
-//	internal/inventory — inventory domain, service, and temporary memory store
+//	internal/inventory — inventory domain, service, and storage (in-memory and PostgreSQL)
 //	internal/logger    — structured logging setup
 //	internal/version   — service name and version metadata
 //	pkg/               — reusable libraries safe for external consumers
 //	api/               — API contracts (OpenAPI specs, shared shapes)
 //	configs/           — configuration files and examples
 //
-// This MVP uses only the Go standard library: no database, messaging, auth, or Docker.
+// Storage is selected at startup: PostgreSQL when DATABASE_URL is set,
+// otherwise a temporary in-memory store. Messaging, auth, and Docker are
+// out of scope for this stage.
 package main
 
 import (

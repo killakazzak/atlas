@@ -82,6 +82,38 @@ func TestHandler_ServersAPI(t *testing.T) {
 		t.Fatalf("get missing status = %d, want %d", rec.Code, http.StatusNotFound)
 	}
 
+	// Update
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(
+		http.MethodPut,
+		"/api/v1/servers/"+id,
+		bytes.NewBufferString(`{"name":"srv-1-renamed","hostname":"srv-1.local","ip":"10.0.0.2","status":"online"}`),
+	))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("update status = %d, want %d body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var updated map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &updated); err != nil {
+		t.Fatalf("update decode: %v", err)
+	}
+	if updated["name"] != "srv-1-renamed" || updated["ip"] != "10.0.0.2" || updated["status"] != "online" {
+		t.Fatalf("update fields not applied: %v", updated)
+	}
+	if updated["id"] != id {
+		t.Fatalf("update changed id: got %v, want %s", updated["id"], id)
+	}
+
+	// Update missing
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(
+		http.MethodPut,
+		"/api/v1/servers/missing",
+		bytes.NewBufferString(`{"name":"x","hostname":"x.local"}`),
+	))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("update missing status = %d, want %d", rec.Code, http.StatusNotFound)
+	}
+
 	// Delete
 	rec = httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/v1/servers/"+id, nil))

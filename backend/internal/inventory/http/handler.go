@@ -27,6 +27,7 @@ func (h *Handler) Register(mux *nethttp.ServeMux) {
 	mux.HandleFunc("GET /api/v1/servers", h.listServers)
 	mux.HandleFunc("GET /api/v1/servers/{id}", h.getServer)
 	mux.HandleFunc("POST /api/v1/servers", h.createServer)
+	mux.HandleFunc("PUT /api/v1/servers/{id}", h.updateServer)
 	mux.HandleFunc("DELETE /api/v1/servers/{id}", h.deleteServer)
 }
 
@@ -127,6 +128,64 @@ func (h *Handler) createServer(w nethttp.ResponseWriter, r *nethttp.Request) {
 	}
 
 	writeJSON(w, nethttp.StatusCreated, toServerResponse(server))
+}
+
+func (h *Handler) updateServer(w nethttp.ResponseWriter, r *nethttp.Request) {
+	defer r.Body.Close()
+
+	id := r.PathValue("id")
+	if strings.TrimSpace(id) == "" {
+		writeError(w, nethttp.StatusBadRequest, "id is required")
+		return
+	}
+
+	existing, err := h.service.GetServer(r.Context(), id)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+
+	var req createServerRequest
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil {
+		writeError(w, nethttp.StatusBadRequest, "invalid JSON body")
+		return
+	}
+
+	req.Name = strings.TrimSpace(req.Name)
+	req.Hostname = strings.TrimSpace(req.Hostname)
+	req.IP = strings.TrimSpace(req.IP)
+	req.OperatingSystem = strings.TrimSpace(req.OperatingSystem)
+	req.Status = strings.TrimSpace(req.Status)
+
+	if req.Name == "" {
+		writeError(w, nethttp.StatusBadRequest, "name is required")
+		return
+	}
+	if req.Hostname == "" {
+		writeError(w, nethttp.StatusBadRequest, "hostname is required")
+		return
+	}
+
+	status := inventory.ServerStatusUnknown
+	if req.Status != "" {
+		status = inventory.ServerStatus(req.Status)
+	}
+
+	// Preserve identity and creation time; apply the mutable fields.
+	existing.Name = req.Name
+	existing.Hostname = req.Hostname
+	existing.IP = req.IP
+	existing.OperatingSystem = req.OperatingSystem
+	existing.Status = status
+
+	if err := h.service.UpdateServer(r.Context(), existing); err != nil {
+		writeServiceError(w, err)
+		return
+	}
+
+	writeJSON(w, nethttp.StatusOK, toServerResponse(existing))
 }
 
 func (h *Handler) deleteServer(w nethttp.ResponseWriter, r *nethttp.Request) {
