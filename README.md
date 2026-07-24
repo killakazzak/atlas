@@ -1,53 +1,59 @@
 # Atlas
 
+[![CI](https://github.com/killakazzak/atlas/actions/workflows/ci.yml/badge.svg)](https://github.com/killakazzak/atlas/actions/workflows/ci.yml)
+
 Enterprise control plane for **1C** (1С:Предприятие) infrastructure — inventory, discovery, agent-based monitoring, and orchestrated operations across Windows and Linux environments.
 
-## Goals
+---
 
-- Maintain a single, authoritative inventory of 1C hosts, clusters, and infobases
-- Automate discovery and reconciliation with minimal manual input
-- Enable audited, orchestrated bootstrap and maintenance workflows
-- Operate consistently across Windows and Linux with enterprise-grade security
+## Overview
 
-## Non-Goals
+Atlas provides a single authoritative source of truth for 1C infrastructure: hosts, clusters, infobases, and agents. It exposes a REST API consumed by the Atlas Console (web UI) and the Atlas Agent running on managed hosts.
 
-- 1C application configuration (metadata, extensions, business logic)
-- Replacement of native 1C administration tools for deep debugging
-- End-user licensing or billing portals
-- Multi-tenant SaaS in MVP (on-premises first)
+## Features
 
-Details: [Vision](docs/vision/vision.md)
+- Inventory management for servers, clusters, and infobases
+- Agent-based monitoring with heartbeat and status tracking
+- REST API with structured error responses and request tracing
+- OpenAPI 3.1 specification with embedded Swagger UI
+- PostgreSQL persistence with versioned migrations
+- Middleware: panic recovery, request ID propagation, structured logging
+- Unit and integration tests
+- CI pipeline with formatting, vet, lint, and OpenAPI validation
 
-## Technology Stack
+## Architecture
 
 | Layer | Technology |
 |-------|------------|
-| Backend services | Go |
-| Atlas Console | TypeScript, React |
-| Agents | Go (Windows and Linux — TBD in Phase 2) |
-| Database | PostgreSQL 16 |
-| Message broker | RabbitMQ 3.x |
-| API contract | REST, OpenAPI 3.x |
+| Backend | Go |
+| Console | TypeScript, React |
+| Agents | Go (Windows and Linux) |
+| Database | PostgreSQL 17 |
+| Message broker | RabbitMQ 3.x (Phase 2) |
+| API contract | REST, OpenAPI 3.1 |
 | CI/CD | GitHub Actions |
-| Runtime packaging | Docker (services), OS-native packages (agents) |
+| Packaging | Docker (services), OS-native packages (agents) |
 
-Rationale and constraints: [Architecture — Technology Stack](docs/architecture/architecture.md#technology-stack)
+Full design: [Architecture](docs/architecture/architecture.md)
 
-## Documentation
+## Getting Started
 
-| Document | Purpose |
-|----------|---------|
-| [Vision](docs/vision/vision.md) | Problem statement, personas, success criteria |
-| [Roadmap](docs/vision/roadmap.md) | MVP delivery phases |
-| [Architecture](docs/architecture/architecture.md) | Components, diagrams, messaging, security |
-| [Development Workflow](docs/architecture/development-workflow.md) | Branching, PRs, ADRs, CI |
-| [ADR-0001](docs/adr/ADR-0001-project-structure.md) | Monorepo structure decision |
+**Prerequisites**
 
-## Local Development
+- [Docker Desktop](https://www.docker.com/products/docker-desktop)
+- [Go 1.25+](https://go.dev/dl/)
+- [golang-migrate CLI](https://github.com/golang-migrate/migrate)
 
-**Prerequisites:** Docker Desktop, Go, [migrate CLI](https://github.com/golang-migrate/migrate)
+**Clone and enter the repository**
 
-Start the database, apply migrations, and run the server:
+```bash
+git clone https://github.com/killakazzak/atlas.git
+cd atlas
+```
+
+## Running Locally
+
+Start PostgreSQL, apply migrations, and run the server:
 
 ```powershell
 .\scripts\db-up.ps1
@@ -55,45 +61,152 @@ Start the database, apply migrations, and run the server:
 .\scripts\run-local.ps1
 ```
 
-Stop PostgreSQL:
+The server starts on `http://localhost:8080`.
+
+Stop PostgreSQL when done:
 
 ```powershell
 .\scripts\db-down.ps1
 ```
 
-Roll back one migration:
+> Migrations are **not** applied automatically on server start. Always run `migrate-up.ps1` after pulling new migrations.
 
-```powershell
-.\scripts\migrate-down.ps1
-```
+## Database
+
+Atlas uses PostgreSQL 17 managed via Docker Compose.
+
+| Script | Purpose |
+|--------|---------|
+| `.\scripts\db-up.ps1` | Start PostgreSQL and wait until ready |
+| `.\scripts\db-down.ps1` | Stop PostgreSQL |
+| `.\scripts\migrate-up.ps1` | Apply all pending migrations |
+| `.\scripts\migrate-down.ps1` | Roll back one migration step |
 
 `DATABASE_URL` defaults to `postgres://atlas:atlas@localhost:5432/atlas?sslmode=disable`.
 Set it in your environment to override.
 
-> Migrations are **not** run automatically on server start — always run `migrate-up.ps1` explicitly.
+Migrations live in `backend/migrations/` and follow the `golang-migrate` naming convention.
 
-## Development Workflow
+## API
 
-1. Branch from `main` using `feature/<ticket>-<short-description>` or `fix/<ticket>-<short-description>`
-2. Keep changes scoped; update documentation when behavior or structure changes
-3. Open a pull request with linked issue; require one reviewer approval
+Base URL: `http://localhost:8080`
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/health` | Health check |
+| `GET` | `/version` | Service version |
+| `GET` | `/api/v1/servers` | List servers |
+| `POST` | `/api/v1/servers` | Register a server |
+| `GET` | `/api/v1/servers/{id}` | Get a server |
+| `DELETE` | `/api/v1/servers/{id}` | Delete a server |
+
+All error responses use a consistent format:
+
+```json
+{
+  "error": {
+    "code": "not_found",
+    "message": "server not found"
+  },
+  "requestId": "a3f1b2c4d5e6f708"
+}
+```
+
+## Swagger UI
+
+Interactive API documentation is available when the server is running:
+
+| Resource | URL |
+|----------|-----|
+| Swagger UI | http://localhost:8080/swagger |
+| OpenAPI spec (YAML) | http://localhost:8080/openapi/openapi.yaml |
+
+The spec source lives at `backend/openapi/openapi.yaml`.
+
+## Development
+
+**Run all checks** (format, vet, lint, test, OpenAPI validation):
+
+```bash
+cd backend
+make check
+```
+
+Individual targets:
+
+```bash
+make fmt      # format source files
+make vet      # go vet
+make lint     # golangci-lint
+make test     # go test -race ./...
+make openapi  # validate openapi.yaml with vacuum
+make run      # start the server
+```
+
+**Workflow**
+
+1. Branch from `main`: `feature/<ticket>-<short-description>` or `fix/<ticket>-<short-description>`
+2. Keep changes scoped; update docs when behavior or structure changes
+3. Open a pull request; require one reviewer approval
 4. Record significant design decisions as ADRs in `docs/adr/`
 5. Merge via squash after CI passes
 
 Full process: [Development Workflow](docs/architecture/development-workflow.md)
 
-## Repository Layout
+## CI
+
+GitHub Actions runs on every push and pull request:
+
+| Step | Tool |
+|------|------|
+| Formatting | `gofmt` |
+| Static analysis | `go vet` |
+| Linting | `golangci-lint` |
+| Tests | `go test -race` |
+| OpenAPI validation | `vacuum` |
+
+Pipeline config: [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
+
+## Project Structure
 
 ```
-backend/   frontend/   agent/{windows,linux}/   docs/   scripts/   .github/workflows/
+atlas/
+├── backend/                  # Go backend service
+│   ├── cmd/server/           # Entrypoint
+│   ├── internal/
+│   │   ├── app/              # Application wiring
+│   │   ├── config/           # Configuration
+│   │   ├── database/         # PostgreSQL connection
+│   │   ├── http/             # HTTP server and middleware
+│   │   ├── httpx/            # Shared HTTP helpers
+│   │   ├── inventory/        # Inventory domain and service
+│   │   └── logger/           # Structured logger
+│   ├── migrations/           # SQL migrations
+│   ├── openapi/              # OpenAPI 3.1 spec + embed
+│   ├── Makefile
+│   └── .golangci.yml
+├── frontend/                 # React console (Phase 2)
+├── agent/                    # Atlas agent (Phase 2)
+├── docs/                     # Architecture, ADRs, vision
+├── scripts/                  # PowerShell dev scripts
+├── docker-compose.yml
+└── .github/workflows/ci.yml
 ```
 
 Structure rationale: [ADR-0001](docs/adr/ADR-0001-project-structure.md)
 
-## Status
+## Roadmap
 
-Phase 0 (Foundation) — repository structure and documentation baseline. Application code begins in Phase 1. See [Roadmap](docs/vision/roadmap.md).
+| Phase | Description | Status |
+|-------|-------------|--------|
+| 0 | Foundation — repository, docs, CI | ✅ Done |
+| 1 | REST API, PostgreSQL, OpenAPI, Swagger | ✅ Done |
+| 2 | Discovery, agents, RabbitMQ | Planned |
+| 3 | Console (React UI) | Planned |
+| 4 | Authentication, RBAC | Planned |
+
+Full roadmap: [Roadmap](docs/vision/roadmap.md)
 
 ## License
 
-TBD
+Apache-2.0

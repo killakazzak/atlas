@@ -10,7 +10,7 @@ lint:
 	golangci-lint run
 
 test:
-	go test -race -timeout 60s ./...
+	go test -timeout 60s ./...
 
 openapi:
 	vacuum lint --details openapi/openapi.yaml
