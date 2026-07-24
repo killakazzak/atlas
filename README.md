@@ -4,6 +4,17 @@
 [![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go)](https://go.dev/dl/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
+## Project Status
+
+**Current Version:** v0.1.0 &nbsp;·&nbsp; **Status:** 🟢 Active Development
+
+| | |
+|---|---|
+| ✅ Completed | Foundation — REST API · PostgreSQL · JWT · RBAC · OpenAPI |
+| 🚧 Next | v0.2.0 — Agent Management |
+
+---
+
 Atlas is a backend platform for managing 1C (1С:Предприятие) infrastructure.
 It provides inventory management, JWT authentication, role-based access control,
 and a REST API documented with OpenAPI 3.1. The project is written in Go using
@@ -360,14 +371,122 @@ Pipeline config: [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
 
 ## Roadmap
 
-| Phase | Description | Status |
-|-------|-------------|--------|
-| 0 | Foundation — repository, docs, CI | ✅ Done |
-| 1 | REST API, PostgreSQL, OpenAPI, Swagger | ✅ Done |
-| 2 | JWT authentication, RBAC, auth middleware | ✅ Done |
-| 3 | Discovery, agents, RabbitMQ | Planned |
-| 4 | Console (React UI) | Planned |
-| 5 | Infobase and cluster inventory | Planned |
+## ✅ v0.1.0 — Foundation (Completed)
+
+### Project Infrastructure
+- [x] Modular monolith architecture
+- [x] Environment-based configuration (`PORT`, `DATABASE_URL`, `JWT_*`)
+- [x] Structured logging (`log/slog`, request-ID propagation)
+- [x] HTTP middleware pipeline (Recovery → RequestID → Logging)
+- [x] Shared HTTP helpers (`WriteJSON`, `DecodeJSON`, `WriteError`)
+- [x] Consistent error response format (`{error:{code,message},requestId}`)
+
+### Inventory
+- [x] Server domain model and service layer
+- [x] CRUD REST API (`GET|POST|PUT|DELETE /api/v1/servers`)
+- [x] In-memory repository (dev/test)
+- [x] PostgreSQL repository (pgx v5)
+
+### Authentication & Authorization
+- [x] User domain model with roles (Administrator / Operator / Viewer)
+- [x] Password hashing with bcrypt
+- [x] JWT access tokens (HMAC-SHA256, configurable TTL)
+- [x] `POST /api/v1/auth/login` — issue token
+- [x] `POST /api/v1/auth/logout` — stateless stub
+- [x] `GET  /api/v1/auth/me` — current user profile
+- [x] `RequireAuth` middleware — 401 on missing/invalid token
+- [x] `RequireRole` / `RequireRoles` middleware — 403 on insufficient role
+- [x] Role-enforced inventory routes (Viewer+ / Operator+ / Administrator)
+
+### API Documentation
+- [x] OpenAPI 3.1 specification with `BearerAuth` security scheme
+- [x] Swagger UI served from embedded binary (`/swagger`)
+- [x] Architecture diagram (draw.io)
+
+### Database
+- [x] PostgreSQL 17 via Docker Compose
+- [x] Versioned migrations (golang-migrate)
+- [x] Migration `000001` — servers table
+- [x] Migration `000002` — users table
+
+### Quality
+- [x] Unit tests for all domain packages
+- [x] Integration-style handler tests
+- [x] GitHub Actions CI (fmt · vet · lint · test)
+- [x] golangci-lint with revive, errcheck, staticcheck
+- [x] `make check` target
+
+---
+
+## 🚧 v0.2.0 — Agent Management
+
+### Agent API
+- [ ] Agent registration (`POST /api/v1/agents`)
+- [ ] Agent authentication (per-agent token or shared secret)
+- [ ] Heartbeat endpoint (`POST /api/v1/agents/{id}/heartbeat`)
+- [ ] Online / offline detection (TTL-based)
+- [ ] Agent version tracking
+
+### Inventory
+- [ ] Agent inventory (list, get, deregister)
+- [ ] Agent health status
+- [ ] Last-seen timestamp
+
+---
+
+## 📋 v0.3.0 — Task Execution
+
+### Tasks
+- [ ] Task API (`POST /api/v1/tasks`)
+- [ ] Task queue (in-process or RabbitMQ)
+- [ ] Task status tracking and history
+
+### Agent Commands
+- [ ] Execute shell command
+- [ ] Restart Windows/Linux service
+- [ ] File transfer to/from agent
+- [ ] Agent self-update
+
+---
+
+## 📊 v0.4.0 — Monitoring
+
+### Metrics
+- [ ] Prometheus `/metrics` endpoint
+- [ ] Server / agent / cluster health metrics
+- [ ] Grafana dashboard templates
+
+### Events & Audit
+- [ ] Structured event log
+- [ ] Audit trail (who did what and when)
+- [ ] Webhook / notification dispatch
+
+---
+
+## 🌐 v0.5.0 — Web Platform
+
+### Frontend
+- [ ] React web console (TypeScript)
+- [ ] Dashboard with live status
+- [ ] Inventory management UI
+- [ ] User management UI
+
+### Security
+- [ ] LDAP / Active Directory integration
+- [ ] OAuth2 / OIDC (SSO)
+- [ ] Multi-factor authentication (TOTP)
+- [ ] Refresh tokens + token revocation
+
+---
+
+## 🚀 Future
+
+- [ ] OpenTelemetry distributed tracing
+- [ ] High Availability (multi-instance, shared state)
+- [ ] Plugin / extension system
+- [ ] Kubernetes operator for 1C clusters
+- [ ] Backup & restore orchestration
+- [ ] Multi-tenant / multi-cluster support
 
 ---
 
