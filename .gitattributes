@@ -1,0 +1,31 @@
+# Normalize text files to LF in the repository
+* text=auto
+
+# Go source
+*.go text eol=lf
+
+# SQL migrations
+*.sql text eol=lf
+
+# YAML
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# Markdown
+*.md text eol=lf
+
+# Shell scripts
+*.sh text eol=lf
+
+# PowerShell scripts use CRLF on checkout for Windows
+*.ps1 text eol=crlf
+
+# Windows batch files
+*.bat text eol=crlf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.exe binary
